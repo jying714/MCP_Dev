@@ -30,3 +30,10 @@ Thumbs.db
 # Generated script outputs
 Info/
 output/
+
+# Ignore backups and logs
+BackupScripts/
+logs/
+data/
+db/
+.venv/
