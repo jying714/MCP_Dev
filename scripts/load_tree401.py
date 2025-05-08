@@ -9,6 +9,7 @@ from datetime import datetime
 HERE      = Path(__file__).parent
 ROOT      = HERE.parent
 DB_PATH   = ROOT / "db"   / "passive_tree.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATA_FILE = ROOT / "data" / "tree401.json"
 LOG_DIR   = ROOT / "logs" / "load_tree401"
 
