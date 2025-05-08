@@ -3,6 +3,7 @@ name: Passive Tree ETL
 on:
   push:
     paths:
+      - 'requirements.txt'
       - 'scripts/**'
       - 'data/**'
       - 'tests/**'
