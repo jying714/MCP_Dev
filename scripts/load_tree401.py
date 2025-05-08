@@ -5,11 +5,15 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+# === Ensure db directory exists immediately ===
+PROJECT_ROOT = Path(__file__).parent.parent
+DB_DIR       = PROJECT_ROOT / "db"
+DB_DIR.mkdir(parents=True, exist_ok=True)
+
 # === Paths ===
 HERE      = Path(__file__).parent
 ROOT      = HERE.parent
 DB_PATH   = ROOT / "db"   / "passive_tree.db"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATA_FILE = ROOT / "data" / "tree401.json"
 LOG_DIR   = ROOT / "logs" / "load_tree401"
 
@@ -71,12 +75,14 @@ def upsert_version(conn):
     logger.info(f"Created version {vid} ({tag})")
     return vid
 
+
 def load_raw(conn, vid, raw):
     conn.execute(
         "INSERT INTO raw_trees(version_id, raw_json) VALUES (?,?)",
         (vid, json.dumps(raw))
     )
     logger.debug("Stored raw JSON")
+
 
 def extract_position(n, nid, groups):
     pos = n.get("position")
@@ -101,6 +107,7 @@ def extract_position(n, nid, groups):
     except Exception:
         logger.error(f"Node {nid}: non-integer position (x={rx!r}, y={ry!r})")
         raise
+
 
 def compute_node_type(skill_id, details):
     if skill_id.startswith("Ascendancy"):
@@ -129,13 +136,11 @@ def load_nodes(conn, vid, nodes, groups, skills):
         sid = n.get("skill_id", "")
         det = skills.get(sid)
         if det is None:
-            # log missing skill lookup
             conn.execute(NODE_ERROR_SQL, (vid, nid, "missing_skill", sid))
             det = {}
         try:
             x, y = extract_position(n, nid, groups)
         except Exception:
-            # log missing position
             conn.execute(NODE_ERROR_SQL, (vid, nid, "missing_position", repr(n.get("position"))))
             raise
 
@@ -154,6 +159,7 @@ def load_nodes(conn, vid, nodes, groups, skills):
         )
     logger.info(f"Upserted {len(nodes)} nodes")
 
+
 def load_edges(conn, vid, nodes):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
@@ -161,21 +167,18 @@ def load_edges(conn, vid, nodes):
             cid = int(c["id"]) if isinstance(c, dict) else int(c)
             radius = c.get("radius") if isinstance(c, dict) else None
 
-            # Self‑loop?
             if nid == cid:
                 conn.execute(EDGE_ERROR_SQL, (vid, nid, cid, "self_loop", radius))
                 continue
 
-            # Outlier radius?
             if isinstance(radius, int) and radius >= 1_000_000_000:
                 conn.execute(EDGE_ERROR_SQL, (vid, nid, cid, "outlier_radius", radius))
-                # still insert the edge (without radius column)
                 conn.execute(EDGE_INSERT_SQL, (nid, cid, vid))
                 continue
 
-            # Normal edge
             conn.execute(EDGE_INSERT_SQL, (nid, cid, vid))
     logger.info("Loaded raw edges (directional)")
+
 
 def mirror_edges(conn, vid):
     conn.execute("""
@@ -191,6 +194,7 @@ def mirror_edges(conn, vid):
              );
     """, (vid, vid))
     logger.info("Mirrored missing reverse edges")
+
 
 def load_effects(conn, vid, nodes, skills):
     for nid_str, n in nodes.items():
@@ -213,6 +217,7 @@ def load_effects(conn, vid, nodes, skills):
                 continue
             conn.execute(EFFECT_INSERT_SQL, (nid, key, val, vid))
     logger.info("Loaded stat effects")
+
 
 def load_starting_nodes(conn, vid, raw, groups, skills):
     roots = raw.get("passive_tree", {}).get("root_passives", [])
@@ -242,7 +247,6 @@ def main():
     groups = pt.get("groups", {})
     skills = raw.get("passive_skills", {})
 
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
         vid = upsert_version(conn)
