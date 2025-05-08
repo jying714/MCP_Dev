@@ -2,10 +2,14 @@
 import sqlite3
 import pathlib
 import datetime
+from pathlib import Path
 
 # 1. Locate (or create) the database file under db/
-DB_PATH = pathlib.Path(__file__).parent.parent / "db" / "passive_tree.db"
-DB_PATH.parent.mkdir(exist_ok=True)  # ensure db/ exists
+DB_PATH = Path(__file__).parent.parent / "db" / "passive_tree.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+
 
 # 2. DDL statements
 DDL = """
