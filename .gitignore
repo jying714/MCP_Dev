@@ -26,3 +26,7 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated script outputs
+Info/
+output/
