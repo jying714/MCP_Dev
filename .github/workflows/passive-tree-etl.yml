@@ -1,0 +1,43 @@
+name: Passive Tree ETL
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - 'data/**'
+      - 'tests/**'
+      - '.github/workflows/passive-tree-etl.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'data/**'
+      - 'tests/**'
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch passive_tree.json
+        run: python scripts/FetchAndLoadTree401.py
+
+      - name: Load into SQLite
+        run: python scripts/load_tree401.py
+
+      - name: Validate ETL end‑to‑end
+        run: python scripts/validate_full_etl.py
+
+      - name: Run smoke tests
+        run: pytest --maxfail=1 --disable-warnings -q
