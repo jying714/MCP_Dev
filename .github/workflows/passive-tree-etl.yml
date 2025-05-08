@@ -39,6 +39,9 @@ jobs:
       - name: Initialize SQLite schema
         run: python scripts/setup_db.py
 
+      - name: Apply schema migrations
+        run: python scripts/migrate_add_error_and_starting_tables.py
+
       - name: Load into SQLite
         run: python scripts/load_tree401.py
 
