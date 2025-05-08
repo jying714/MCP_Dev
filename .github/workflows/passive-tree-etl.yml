@@ -33,6 +33,9 @@ jobs:
       - name: Fetch passive_tree.json
         run: python scripts/FetchAndLoadTree401.py
 
+      - name: Initialize SQLite schema
+        run: python scripts/setup_db.py
+
       - name: Load into SQLite
         run: python scripts/load_tree401.py
 
