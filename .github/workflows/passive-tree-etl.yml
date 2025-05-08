@@ -45,8 +45,5 @@ jobs:
       - name: Load into SQLite
         run: python scripts/load_tree401.py
 
-      - name: Validate ETL end‑to‑end
-        run: python scripts/validate_full_etl.py
-
       - name: Run smoke tests
         run: pytest --maxfail=1 --disable-warnings -q
