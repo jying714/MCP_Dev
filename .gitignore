@@ -1,0 +1,28 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# SQLite database
+db/*.db
+
+# Raw data files (optional: if you only want to check in sample data)
+data/*.json
+
+# PyCharm settings
+.idea/
+*.iml
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
