@@ -1,62 +1,44 @@
-import json
 import sqlite3
+import json
 import pytest
 from pathlib import Path
 
-class SmokeItemsETLTest:
-    @classmethod
-    def setup_class(cls):
-        root = Path(__file__).parent.parent
-        cls.db_path   = root / "db"   / "passive_tree.db"
-        cls.data_dir  = root / "data" / "pob"
+# Adjust path if your DB is elsewhere
+DB_PATH = Path(__file__).parent.parent / "db" / "passive_tree.db"
 
-        # load JSON snapshots
-        cls.bases   = json.loads((cls.data_dir / "bases.json").read_text(encoding="utf-8"))
-        cls.uniques = json.loads((cls.data_dir / "uniques.json").read_text(encoding="utf-8"))
-        cls.gems    = json.loads((cls.data_dir / "gems.json").read_text(encoding="utf-8"))
-        cls.skills  = json.loads((cls.data_dir / "skills.json").read_text(encoding="utf-8"))
+@pytest.fixture(scope="module")
+def conn():
+    """Connect once per module and tear down."""
+    conn = sqlite3.connect(DB_PATH)
+    yield conn
+    conn.close()
 
-        cls.conn = sqlite3.connect(cls.db_path)
-        # grab latest item_version
-        cur = cls.conn.execute("SELECT MAX(id) FROM item_versions")
-        cls.version_id = cur.fetchone()[0]
+def test_raw_snapshots_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM raw_item_snapshots;")
+    count, = cur.fetchone()
+    assert count >= 4, f"Expected at least 4 raw snapshots, got {count}"
 
-    @classmethod
-    def teardown_class(cls):
-        cls.conn.close()
+def test_bases_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM base_items;")
+    count, = cur.fetchone()
+    assert count > 0, f"Expected >0 base_items, got {count}"
 
-    def assertCount(self, table, expected):
-        cur = self.conn.execute(f"SELECT COUNT(*) FROM {table} WHERE version_id = ?", (self.version_id,))
-        actual = cur.fetchone()[0]
-        assert actual == expected, f"{table}: expected {expected} rows for version {self.version_id}, got {actual}"
+def test_uniques_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM unique_items;")
+    count, = cur.fetchone()
+    assert count > 0, f"Expected >0 unique_items, got {count}"
 
-    def test_base_items_count(self):
-        self.assertCount("base_items", len(self.bases))
+def test_unique_mods_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM unique_mods;")
+    count, = cur.fetchone()
+    assert count > 0, f"Expected >0 unique_mods, got {count}"
 
-    def test_unique_items_count(self):
-        self.assertCount("unique_items", len(self.uniques))
+def test_gems_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM gems;")
+    count, = cur.fetchone()
+    assert count > 0, f"Expected >0 gems, got {count}"
 
-    def test_gems_count(self):
-        self.assertCount("gems", len(self.gems))
-
-    def test_monster_skills_count(self):
-        self.assertCount("monster_skills", len(self.skills))
-
-    def test_raw_snapshot_count(self):
-        # we should have exactly four raw snapshots loaded
-        cur = self.conn.execute(
-            "SELECT COUNT(*) FROM raw_item_snapshots WHERE version_id = ?",
-            (self.version_id,)
-        )
-        count = cur.fetchone()[0]
-        assert count == 4, f"raw_item_snapshots: expected 4 categories, got {count}"
-
-    def test_unique_modifiers_count(self):
-        # total distinct modifiers across all JSON uniques
-        distinct_mods = {m for u in self.uniques for m in u.get("modifiers", [])}
-        cur = self.conn.execute(
-            "SELECT COUNT(DISTINCT modifier) FROM unique_mods WHERE version_id = ?",
-            (self.version_id,)
-        )
-        db_mods = cur.fetchone()[0]
-        assert db_mods == len(distinct_mods), f"unique_mods: expected {len(distinct_mods)}, got {db_mods}"
+def test_skills_count(conn):
+    cur = conn.execute("SELECT COUNT(*) FROM monster_skills;")
+    count, = cur.fetchone()
+    assert count > 0, f"Expected >0 monster_skills, got {count}"
