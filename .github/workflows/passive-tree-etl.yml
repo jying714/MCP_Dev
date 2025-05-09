@@ -1,6 +1,12 @@
 name: Passive Tree ETL
 
 on:
+  # MVP schedule: run every day at 02:00 UTC
+  schedule:
+    - cron: '0 2 * * *'
+  # allow manual runs
+  workflow_dispatch:
+  # still run on code changes to ETL scripts, schema, tests, etc.
   push:
     paths:
       - 'requirements.txt'
@@ -15,13 +21,16 @@ on:
       - 'tests/**'
 
 jobs:
-  build-and-validate:
+  fetch-and-register:
+    name: Fetch & Register Version
     runs-on: ubuntu-latest
+    outputs:
+      version_id: ${{ steps.register.outputs.version_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -31,8 +40,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Fetch passive_tree.json
-        run: python scripts/FetchAndLoadTree401.py
+      - name: Fetch tree401.json
+        id: fetch
+        run: |
+          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+          mkdir -p data/raw_trees
+          python scripts/fetch_pob_data.py \
+            --output data/raw_trees/${TIMESTAMP}.json
+          echo "::set-output name=timestamp::$TIMESTAMP"
+
+      - name: Register version in DB
+        id: register
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+        run: |
+          python scripts/register_tree_version.py \
+            --json-file data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json \
+            --timestamp ${{ steps.fetch.outputs.timestamp }} \
+            --return-version-id | tee version_id.txt
+          echo "::set-output name=version_id::$(cat version_id.txt)"
+
+      - name: Commit raw JSON
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json
+          git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
+          git push
+
+  load-and-test:
+    name: Load Tree & Smoke‑Test
+    needs: fetch-and-register
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Ensure db directory exists
         run: mkdir -p db
@@ -43,8 +95,13 @@ jobs:
       - name: Apply schema migrations
         run: python scripts/migrate_add_error_and_starting_tables.py
 
-      - name: Load into SQLite
-        run: python scripts/load_tree401.py
+      - name: Load passive tree into SQLite
+        env:
+          VERSION_ID: ${{ needs.fetch-and-register.outputs.version_id }}
+        run: |
+          python scripts/load_tree401.py \
+            --json-file data/raw_trees/${VERSION_ID}.json \
+            --version-id $VERSION_ID
 
       - name: Run smoke tests
         run: pytest --maxfail=1 --disable-warnings -q

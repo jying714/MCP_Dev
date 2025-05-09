@@ -7,17 +7,15 @@ from datetime import datetime
 
 # === Ensure db directory exists immediately ===
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_DIR       = PROJECT_ROOT / "db"
+DB_DIR = PROJECT_ROOT / "db"
 DB_DIR.mkdir(parents=True, exist_ok=True)
 
 # === Paths ===
-HERE      = Path(__file__).parent
-ROOT      = HERE.parent
-DB_PATH   = ROOT / "db"   / "passive_tree.db"
+HERE = Path(__file__).parent
+ROOT = HERE.parent
+DB_PATH = ROOT / "db" / "passive_tree.db"
 DATA_FILE = ROOT / "data" / "tree401.json"
-LOG_DIR   = ROOT / "logs" / "load_tree401"
-
-# Ensure log directory exists
+LOG_DIR = ROOT / "logs" / "load_tree401"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # === Logging ===
@@ -30,6 +28,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === SQL TEMPLATES ===
+NODE_INSERT_SQL = """
+INSERT OR REPLACE INTO passive_nodes
+  (node_id, version_id, x, y, node_type, name, description, orbit, group_id, is_playable)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+"""
+NODE_ERROR_SQL = """
+INSERT OR IGNORE INTO node_errors
+  (version_id, node_id, error_type, raw_value)
+VALUES (?, ?, ?, ?);
+"""
 EDGE_INSERT_SQL = """
 INSERT OR REPLACE INTO node_edges
   (from_node_id, to_node_id, version_id)
@@ -39,16 +47,6 @@ EDGE_ERROR_SQL = """
 INSERT OR IGNORE INTO edge_errors
   (version_id, from_node_id, to_node_id, error_type, raw_radius)
 VALUES (?, ?, ?, ?, ?);
-"""
-NODE_INSERT_SQL = """
-INSERT OR REPLACE INTO passive_nodes
-  (node_id, version_id, x, y, node_type, name, description, orbit, group_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-"""
-NODE_ERROR_SQL = """
-INSERT OR IGNORE INTO node_errors
-  (version_id, node_id, error_type, raw_value)
-VALUES (?, ?, ?, ?);
 """
 EFFECT_INSERT_SQL = """
 INSERT OR REPLACE INTO node_effects
@@ -64,7 +62,6 @@ VALUES (?, ?, ?, ?, ?);
 SOURCE_URL = "https://assets-ng.maxroll.gg/poe2planner/game/tree401.json"
 
 # === Helpers ===
-
 def upsert_version(conn):
     tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     cur = conn.execute(
@@ -129,7 +126,6 @@ def compute_node_type(skill_id, details):
     return "Regular"
 
 # === Loaders ===
-
 def load_nodes(conn, vid, nodes, groups, skills):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
@@ -145,6 +141,9 @@ def load_nodes(conn, vid, nodes, groups, skills):
             raise
 
         ntype = compute_node_type(sid, det)
+        name = det.get("name") or ""
+        is_playable = int(bool(name.strip()) and not name.startswith("[DNT-UNUSED]"))
+
         conn.execute(
             NODE_INSERT_SQL,
             (
@@ -154,7 +153,8 @@ def load_nodes(conn, vid, nodes, groups, skills):
                 det.get("name"),
                 det.get("description"),
                 n.get("orbitIndex"),
-                n.get("parent")
+                n.get("parent"),
+                is_playable,
             )
         )
     logger.info(f"Upserted {len(nodes)} nodes")
@@ -164,11 +164,12 @@ def load_edges(conn, vid, nodes):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
         for c in n.get("connections", []):
-            cid = int(c["id"]) if isinstance(c, dict) else int(c)
+            cid = int(c.get("id") if isinstance(c, dict) else c)
             radius = c.get("radius") if isinstance(c, dict) else None
 
             if nid == cid:
                 conn.execute(EDGE_ERROR_SQL, (vid, nid, cid, "self_loop", radius))
+                conn.execute(EDGE_INSERT_SQL, (nid, cid, vid))
                 continue
 
             if isinstance(radius, int) and radius >= 1_000_000_000:
@@ -241,9 +242,9 @@ def main():
         print("❌ data/tree401.json is missing—run fetch script first")
         return
 
-    raw    = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    pt     = raw.get("passive_tree", {})
-    nodes  = pt.get("nodes", {})
+    raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    pt = raw.get("passive_tree", {})
+    nodes = pt.get("nodes", {})
     groups = pt.get("groups", {})
     skills = raw.get("passive_skills", {})
 
@@ -259,12 +260,12 @@ def main():
         conn.commit()
         logger.info(f"✅ Fully loaded version {vid}")
         print(f"✅ Loaded version {vid}")
-    except Exception as e:
+    except Exception:
         conn.rollback()
         logger.exception("Load failed")
         raise
     finally:
         conn.close()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
