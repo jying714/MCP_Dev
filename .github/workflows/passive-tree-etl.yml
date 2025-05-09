@@ -4,9 +4,9 @@ name: Passive Tree & Boss ETL
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ main ]
+    branches: [ master, main ]
   schedule:
     # daily at 02:00 UTC
     - cron:  '0 2 * * *'
