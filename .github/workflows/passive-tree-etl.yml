@@ -79,11 +79,23 @@ jobs:
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
           git push
 
+      - name: Upload raw snapshot artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: raw-tree
+          path: data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json
+
   load-and-test:
     name: Load Tree & Smoke‑Test
     needs: fetch-and-register
     runs-on: ubuntu-latest
     steps:
+      - name: Download raw snapshot artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: raw-tree
+          path: data/raw_trees
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v4
