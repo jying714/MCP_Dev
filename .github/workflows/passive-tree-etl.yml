@@ -39,11 +39,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Ensure db directory exists
+        run: mkdir -p db
+
+      - name: Initialize SQLite schema
+        run: python scripts/setup_db.py
+
+      - name: Apply schema migrations
+        run: |
+          python scripts/migrate_add_error_and_starting_tables.py
+          # add any other migration scripts here if needed
+
       - name: Fetch tree401.json
         id: fetch
         run: |
-          mkdir -p data/raw_trees db
-          RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
+          mkdir -p data/raw_trees
+          RAW_OUTPUT=$(python scripts/FetchAndLoadTree401.py)
+          RAW_PATH=$(echo "$RAW_OUTPUT" | tail -n1)
           BASENAME=$(basename "$RAW_PATH")
           TIMESTAMP=${BASENAME%.json}
           echo "raw_path=$RAW_PATH"    >> $GITHUB_OUTPUT
@@ -80,4 +92,3 @@ jobs:
           git add -f data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}" || echo "no changes to commit"
           git push
-
