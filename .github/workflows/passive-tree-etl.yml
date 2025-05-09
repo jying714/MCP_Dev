@@ -56,8 +56,8 @@ jobs:
           DB_URL: ${{ secrets.DB_URL }}
         run: |
           python scripts/register_tree_version.py \
-            --json-file data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json \
-            --timestamp ${{ steps.fetch.outputs.timestamp }} \
+            --json-file "${{ steps.fetch.outputs.raw_path }}" \
+            --timestamp "${{ steps.fetch.outputs.raw_path##*/ }}" \
             --return-version-id | tee version_id.txt
           echo "::set-output name=version_id::$(cat version_id.txt)"
 
@@ -99,9 +99,10 @@ jobs:
       - name: Load passive tree into SQLite
         env:
           VERSION_ID: ${{ needs.fetch-and-register.outputs.version_id }}
+          RAW_PATH: ${{ needs.fetch-and-register.outputs.raw_path }}
         run: |
           python scripts/load_tree401.py \
-            --json-file data/raw_trees/${VERSION_ID}.json \
+            --json-file "$RAW_PATH" \
             --version-id $VERSION_ID
 
       - name: Run smoke tests
