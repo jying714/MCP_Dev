@@ -2,8 +2,8 @@ name: Passive Tree ETL
 
 on:
   schedule:
-    - cron: '0 2 * * *'           # daily at 02:00 UTC
-  workflow_dispatch:              # manual run
+    - cron: '0 2 * * *'
+  workflow_dispatch:
   push:
     paths:
       - 'requirements.txt'
@@ -30,11 +30,9 @@ jobs:
       raw_path:    ${{ steps.fetch.outputs.raw_path }}
       timestamp:   ${{ steps.fetch.outputs.timestamp }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
@@ -58,17 +56,18 @@ jobs:
       - name: List raw_trees directory
         run: ls -l data/raw_trees
 
+      - name: Ensure db directory exists
+        run: mkdir -p db
+
       - name: Register version in DB
         id: register
         env:
           DB_URL: ${{ secrets.DB_URL }}
         run: |
-          # write only the version_id integer to version_id.txt
           python scripts/register_tree_version.py \
             --json-file "${{ steps.fetch.outputs.raw_path }}" \
             --timestamp "${{ steps.fetch.outputs.timestamp }}" \
             --return-version-id > version_id.txt
-          # capture it into the job output
           VERSION_ID=$(cat version_id.txt)
           echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
 
@@ -76,7 +75,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Force‑add since data/raw_trees is git‑ignored
           git add -f "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
           git push
@@ -86,11 +84,9 @@ jobs:
     needs: fetch-and-register
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
