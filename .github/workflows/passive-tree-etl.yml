@@ -48,7 +48,8 @@ jobs:
         run: |
           mkdir -p data/raw_trees
           RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
-          TIMESTAMP=$(basename "$RAW_PATH")
+          BASENAME=$(basename "$RAW_PATH")
+          TIMESTAMP=${BASENAME%.json}
           echo "raw_path=$RAW_PATH"    >> $GITHUB_OUTPUT
           echo "timestamp=$TIMESTAMP"  >> $GITHUB_OUTPUT
 
