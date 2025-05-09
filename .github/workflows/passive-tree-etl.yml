@@ -30,8 +30,7 @@ jobs:
         run: python scripts/setup_db.py
 
       - name: Seed boss‑skill overrides
-        run: |
-          Get-Content migrations/005_seed_skill_to_boss.sql | sqlite3 db/passive_tree.db
+        run: sqlite3 db/passive_tree.db < migrations/005_seed_skill_to_boss.sql
 
       # Passive Tree ETL
       - name: Fetch passive‑tree JSON
