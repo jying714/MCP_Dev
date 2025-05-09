@@ -19,9 +19,8 @@ on:
 
 jobs:
   tree-etl:
-    name: Passive‑Tree ETL
+    name: Passive‑Tree + Ascendancy ETL
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,23 +58,28 @@ jobs:
             --return-version-id)
           echo "VERSION_ID=$version_id" >> $GITHUB_OUTPUT
 
-      - name: Load passive tree & run smoke‑tests
+      - name: Load passive tree & run passive smoke‑tests
         env:
           RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
           VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
         run: |
-          # in case you have migrations to apply first:
           python scripts/migrate_add_error_and_starting_tables.py || true
           python scripts/load_tree401.py \
             --json-file "$RAW_PATH" \
             --version-id $VERSION_ID
           pytest tests/test_smoke_etl.py -q
 
+      - name: Run ascendancy smoke‑tests
+        env:
+          RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
+          VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
+        run: |
+          pytest tests/test_smoke_ascendancy_etl.py -q
+
   item-etl:
     name: Item ETL
     needs: tree-etl
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,7 +102,7 @@ jobs:
       - name: Fetch PoB data
         run: python scripts/fetch_pob_data.py
 
-      - name: Load items & run smoke‑tests
+      - name: Load items & run item smoke‑tests
         run: |
           python scripts/load_items.py
           pytest tests/test_smoke_items_etl.py -q
