@@ -73,11 +73,12 @@ def upsert_version(conn):
     return vid
 
 def load_raw(conn, vid, raw):
+    # Upsert raw JSON so we don’t violate the UNIQUE constraint on version_id
     conn.execute(
-        "INSERT INTO raw_trees(version_id, raw_json) VALUES (?,?)",
+        "INSERT OR REPLACE INTO raw_trees(version_id, raw_json) VALUES (?,?)",
         (vid, json.dumps(raw))
     )
-    logger.debug("Stored raw JSON")
+    logger.debug("Upserted raw JSON")
 
 def extract_position(n, nid, groups):
     pos = n.get("position")
