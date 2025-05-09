@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 import sqlite3
 import json
+import os
 
-DB_PATH            = "passive_tree.db"
-BOSSES_JSON        = "data/bosses.json"
-BOSS_SKILLS_JSON   = "data/boss_skills.json"
+DB_PATH           = os.path.join("db", "passive_tree.db")
+BOSSES_JSON       = "data/bosses.json"
+BOSS_SKILLS_JSON  = "data/boss_skills.json"
+
+def _load_json(path: str):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def load_boss_etl():
     print("▶ Loading Boss ETL…")
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     # 1) version row
     cur.execute("INSERT INTO boss_versions DEFAULT VALUES;")
@@ -17,34 +22,28 @@ def load_boss_etl():
 
     # 2) raw snapshots
     for name, path in [("bosses", BOSSES_JSON), ("boss_skills", BOSS_SKILLS_JSON)]:
-        with open(path, "r", encoding="utf-8") as f:
-            raw = f.read()
+        raw = open(path, "r", encoding="utf-8").read()
         cur.execute(
             "INSERT INTO raw_boss_snapshots (version_id, raw_json) VALUES (?, ?);",
             (version_id, raw)
         )
         print(f"  • Raw {name} snapshot saved.")
 
-    # 3) parse JSON
-    bosses      = json.loads(open(BOSSES_JSON,      encoding="utf-8").read())
-    boss_skills = json.loads(open(BOSS_SKILLS_JSON, encoding="utf-8").read())
+    # 3) load JSON
+    bosses = _load_json(BOSSES_JSON)
+    skills = _load_json(BOSS_SKILLS_JSON)
 
-    # 4) load bosses metadata
+    # 4) upsert bosses
     for key, meta in bosses.items():
         cur.execute("""
         INSERT OR IGNORE INTO bosses
           (version_id, key, name, tier, biome, description)
         VALUES (?, ?, ?, NULL, NULL, NULL);
-        """, (
-            version_id,
-            key,
-            key  # no display name in this file—use key as name
-        ))
-        cur.execute("SELECT id FROM bosses WHERE version_id=? AND key=?",
-                    (version_id, key))
-        boss_id = cur.fetchone()[0]
-
-        # update armour/evasion/isUber fields if present in schema
+        """, (version_id, key, key))
+        boss_id = cur.execute(
+            "SELECT id FROM bosses WHERE version_id=? AND key=?",
+            (version_id, key)
+        ).fetchone()[0]
         cur.execute("""
         UPDATE bosses
            SET armour_mult = ?, evasion_mult = ?, is_uber = ?
@@ -56,32 +55,57 @@ def load_boss_etl():
             boss_id
         ))
 
-    # 5) load boss skills
-    for boss_name, skills in boss_skills.items():
-        # find boss_id by matching key/name
-        cur.execute("""
-          SELECT id FROM bosses
-           WHERE version_id=? AND key=?
-        """, (version_id, boss_name))
-        row = cur.fetchone()
-        if not row:
-            print(f"⚠️  No boss entry for skills '{boss_name}', skipping.")
-            continue
-        boss_id = row[0]
+    # 5) prepare boss lookup SQL (overrides + fallback)
+    FIND_BOSS_SQL = """
+    WITH mapped AS (
+      SELECT b.id AS boss_id
+        FROM skill_to_boss m
+        JOIN bosses b ON m.boss_key = b.key
+       WHERE b.version_id = :ver
+         AND m.skill_key_pattern = :skill
+    ), fallback AS (
+      SELECT id AS boss_id
+        FROM bosses
+       WHERE version_id = :ver
+         AND INSTR(:skill, key) > 0
+       ORDER BY LENGTH(key) DESC
+       LIMIT 1
+    )
+    SELECT boss_id FROM mapped
+    UNION ALL
+    SELECT boss_id FROM fallback
+    LIMIT 1;
+    """
 
-        for skill_key, info in skills.items():
-            cur.execute("""
-            INSERT INTO boss_skills
-              (boss_id, skill_key, name, description, cooldown, tags)
-            VALUES (?, ?, ?, ?, ?, ?);
-            """, (
-                boss_id,
-                skill_key,
-                info.get("tooltip"),           # use tooltip as human‑readable name/desc
-                info.get("tooltip"),
-                info.get("speed"),             # treat as cooldown proxy
-                json.dumps(info.get("tags", {}))
-            ))
+    # 6) assign skills
+    for skill_key, info in skills.items():
+        row = cur.execute(
+            FIND_BOSS_SQL,
+            {"ver": version_id, "skill": skill_key}
+        ).fetchone()
+
+        if not row:
+            # record unmatched for later review
+            print(f"⚠️  Unmatched skill: '{skill_key}'")
+            cur.execute(
+                "INSERT OR IGNORE INTO unmatched_skills (version_id, skill_key) VALUES (?, ?);",
+                (version_id, skill_key)
+            )
+            continue
+
+        boss_id = row[0]
+        cur.execute("""
+        INSERT INTO boss_skills
+          (boss_id, skill_key, name, description, cooldown, tags)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """, (
+            boss_id,
+            skill_key,
+            info.get("tooltip"),
+            info.get("tooltip"),
+            info.get("speed"),
+            json.dumps(info.get("tags", {}))
+        ))
 
     conn.commit()
     conn.close()

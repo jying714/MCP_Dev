@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import sqlite3
 import json
 import logging
@@ -6,19 +7,15 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 
-# === Ensure db directory exists immediately ===
+# ─── Ensure db directory exists and set DB_PATH ────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_DIR        = PROJECT_ROOT / "db"
+DB_DIR       = PROJECT_ROOT / "db"
 DB_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH      = os.path.normpath(str(DB_DIR / "passive_tree.db"))
 
-# === Paths ===
-HERE      = Path(__file__).parent
-ROOT      = HERE.parent
-DB_PATH   = ROOT / "db" / "passive_tree.db"
-LOG_DIR   = ROOT / "logs" / "load_tree401"
+# ─── Logging setup ─────────────────────────────────────────────────────────────
+LOG_DIR = PROJECT_ROOT / "logs" / "load_tree401"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-# === Logging ===
 LOG_FILE = LOG_DIR / "load_tree401.log"
 logging.basicConfig(
     filename=str(LOG_FILE),

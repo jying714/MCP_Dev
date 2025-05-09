@@ -4,77 +4,73 @@ import sys
 import json
 import argparse
 from datetime import datetime
+import sqlite3
+from pathlib import Path
 
-import sqlalchemy as sa
-from sqlalchemy import Table, Column, Integer, String, Text, MetaData, DateTime, ForeignKey
+# === Constants ===
+SCRIPT_DIR = Path(__file__).parent
+DB_PATH    = SCRIPT_DIR.parent / "db" / "passive_tree.db"
 
 def parse_args():
     p = argparse.ArgumentParser(
         description="Register a new passive-tree version and store its raw JSON"
     )
-    p.add_argument("--json-file", required=True,
-                   help="Path to the raw JSON file (e.g. data/raw_trees/20250508T133256Z.json)")
-    p.add_argument("--timestamp", required=True,
-                   help="Timestamp tag for this version (e.g. 20250508T133256Z)")
-    p.add_argument("--return-version-id", action="store_true",
-                   help="Print the newly inserted version_id to stdout")
+    p.add_argument(
+        "--json-file", "-j",
+        required=True,
+        help="Path to the raw JSON file (e.g. data/tree401.json)"
+    )
+    p.add_argument(
+        "--timestamp", "-t",
+        help=(
+            "Timestamp tag for this version "
+            "(default: UTC now in YYYYMMDDTHHMMSSZ)"
+        )
+    )
     return p.parse_args()
 
 def main():
     args = parse_args()
 
-    # Read the raw JSON
-    with open(args.json_file, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    # Get DB URL from environment
-    db_url = os.environ.get("DB_URL")
-    if not db_url:
-        print("ERROR: DB_URL environment variable not set", file=sys.stderr)
+    # 1) Read the raw JSON
+    json_path = Path(args.json_file)
+    if not json_path.is_file():
+        print(f"ERROR: JSON file not found: {json_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Create SQLAlchemy engine
-    engine = sa.create_engine(db_url)
-    metadata = MetaData()
+    raw_json = json_path.read_text(encoding="utf-8")
+    parsed   = json.loads(raw_json)
 
-    # Define tables matching your schema
-    tree_versions = Table(
-        "tree_versions", metadata,
-        Column("version_id", Integer, primary_key=True, autoincrement=True),
-        Column("version_tag", String, nullable=False, unique=True),
-        Column("fetched_at", DateTime, nullable=False),
-        Column("source_url", String, nullable=True),
+    # 2) Determine the version_tag
+    if args.timestamp:
+        version_tag = args.timestamp
+    else:
+        version_tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    # 3) Open the SQLite database
+    conn = sqlite3.connect(str(DB_PATH))
+    cur  = conn.cursor()
+
+    # 4) Insert into tree_versions
+    fetched_at = datetime.utcnow().isoformat(sep=' ')
+    source_url = str(json_path)
+    cur.execute(
+        "INSERT INTO tree_versions (version_tag, fetched_at, source_url) VALUES (?, ?, ?);",
+        (version_tag, fetched_at, source_url)
     )
-    raw_trees = Table(
-        "raw_trees", metadata,
-        Column("version_id", Integer, ForeignKey("tree_versions.version_id", ondelete="CASCADE"), primary_key=True),
-        Column("raw_json", Text, nullable=False),
+    version_id = cur.lastrowid
+
+    # 5) Insert into raw_trees
+    cur.execute(
+        "INSERT INTO raw_trees (version_id, raw_json) VALUES (?, ?);",
+        (version_id, raw_json)
     )
 
-    # Ensure tables exist (no-op if already in DB)
-    metadata.create_all(engine)
+    conn.commit()
+    conn.close()
 
-    # Insert new version + raw JSON
-    with engine.begin() as conn:
-        now = datetime.utcnow()
-        result = conn.execute(
-            tree_versions.insert().values(
-                version_tag=args.timestamp,
-                fetched_at=now,
-                source_url=args.json_file
-            )
-        )
-        version_id = result.inserted_primary_key[0]
-
-        conn.execute(
-            raw_trees.insert().values(
-                version_id=version_id,
-                raw_json=json.dumps(raw_json)
-            )
-        )
-
-    if args.return_version_id:
-        print(version_id)
+    # 6) Print the new version_id
+    print(version_id)
 
 if __name__ == "__main__":
     main()
