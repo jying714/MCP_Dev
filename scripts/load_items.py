@@ -15,10 +15,10 @@ HERE     = Path(__file__).parent
 ROOT     = HERE.parent
 DB_PATH  = ROOT / "db" / "passive_tree.db"
 
-# ← pull your four JSONs from data/pob
+# Location of your PoB JSON snapshots
 DATA_DIR = ROOT / "data" / "pob"
 
-# keep ETL logs centrally
+# Ensure ETL log directory exists
 LOG_DIR  = ROOT / "logs" / "load_items"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +37,7 @@ INSERT INTO item_versions(version_tag, fetched_at, source)
 VALUES (?, ?, ?);
 """
 
+# Upsert instead of plain INSERT to avoid UNIQUE violations
 INSERT_RAW_SQL = """
 INSERT OR REPLACE INTO raw_item_snapshots(version_id, category, raw_json)
 VALUES (?, ?, ?);
@@ -67,9 +68,8 @@ INSERT OR REPLACE INTO monster_skills(skill_name, version_id, metadata)
 VALUES (?, ?, ?);
 """
 
-# Mark where these came from
+# Mark the source of PoB data
 SOURCE = "PoB-PoE2/src/Data@dev"
-
 
 def upsert_item_version(conn):
     tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -81,12 +81,16 @@ def upsert_item_version(conn):
     logger.info(f"⮕ Created item_version {vid} ({tag})")
     return vid
 
-
 def load_raw(conn, vid, category, path: Path):
+    """
+    Upsert the raw JSON snapshot for the given category.
+    """
     raw = path.read_text(encoding="utf-8")
-    conn.execute(INSERT_RAW_SQL, (vid, category, raw))
-    logger.debug(f"  • Loaded raw JSON for '{category}'")
-
+    conn.execute(
+        INSERT_RAW_SQL,
+        (vid, category, raw)
+    )
+    logger.debug(f"⮕ Upserted raw JSON for '{category}'")
 
 def load_bases(conn, vid, items):
     for itm in items:
@@ -99,7 +103,6 @@ def load_bases(conn, vid, items):
             )
         )
     logger.info(f"⮕ Upserted {len(items)} base_items")
-
 
 def load_uniques(conn, vid, items):
     for itm in items:
@@ -122,7 +125,6 @@ def load_uniques(conn, vid, items):
             )
     logger.info(f"⮕ Upserted {len(items)} unique_items + modifiers")
 
-
 def load_gems(conn, vid, items):
     for itm in items:
         conn.execute(
@@ -134,7 +136,6 @@ def load_gems(conn, vid, items):
             )
         )
     logger.info(f"⮕ Upserted {len(items)} gems")
-
 
 def load_skills(conn, vid, items):
     for itm in items:
@@ -148,9 +149,8 @@ def load_skills(conn, vid, items):
         )
     logger.info(f"⮕ Upserted {len(items)} monster_skills")
 
-
 def main():
-    # point at your four JSON snapshots under data/pob/
+    # Paths to the four PoB JSON snapshots
     files = {
         "bases":   DATA_DIR / "bases.json",
         "uniques": DATA_DIR / "uniques.json",
@@ -166,11 +166,11 @@ def main():
     try:
         vid = upsert_item_version(conn)
 
-        # load raw snapshots
+        # Load raw snapshots (upsert)
         for cat, path in files.items():
             load_raw(conn, vid, cat, path)
 
-        # parse and load structured
+        # Load structured data
         data = {cat: json.loads(path.read_text(encoding="utf-8"))
                 for cat, path in files.items()}
 
@@ -188,7 +188,6 @@ def main():
         raise
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
     main()
