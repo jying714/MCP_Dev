@@ -6,8 +6,16 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent.parent / "db" / "passive_tree.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-# 2. Full DDL: initial schema + error & starting_nodes migrations
+# 2. DDL: drop old edge/errors tables, then rebuild everything
 DDL = """
+PRAGMA foreign_keys = OFF;
+
+-- Drop old tables so we can fully redefine them
+DROP TABLE IF EXISTS node_edges;
+DROP TABLE IF EXISTS node_errors;
+DROP TABLE IF EXISTS edge_errors;
+DROP TABLE IF EXISTS starting_nodes;
+
 PRAGMA foreign_keys = ON;
 
 -- Versioning tables
@@ -98,11 +106,10 @@ CREATE TABLE IF NOT EXISTS starting_nodes (
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.executescript(DDL)
+    conn.executescript(DDL)
     conn.commit()
     conn.close()
-    print(f"✅ Full schema created/updated at {DB_PATH}")
+    print(f"✅ Fully reconstructed schema at {DB_PATH}")
 
 if __name__ == "__main__":
     main()
