@@ -2,8 +2,8 @@ name: MCP ETL Pipeline
 
 on:
   schedule:
-    - cron: '0 2 * * *'     # daily at 02:00 UTC
-  workflow_dispatch:        # manual runs
+    - cron: '0 2 * * *'     # daily at 02:00 UTC
+  workflow_dispatch:        # manual run
   push:
     paths:
       - 'requirements.txt'
@@ -18,12 +18,12 @@ on:
       - 'tests/**'
 
 jobs:
-  # 1) Passive‑tree: fetch → register → load → smoke‑test
   tree-etl:
     name: Passive‑Tree ETL
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -34,6 +34,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Ensure db directory exists & create schema
+        run: |
+          mkdir -p db
+          python scripts/setup_db.py
 
       - name: Fetch & snapshot tree401.json
         id: fetch_tree
@@ -53,11 +58,6 @@ jobs:
             --return-version-id)
           echo "VERSION_ID=$version_id" >> $GITHUB_OUTPUT
 
-      - name: Initialize database schema
-        run: |
-          mkdir -p db
-          python scripts/setup_db.py
-
       - name: Load passive tree & run smoke‑tests
         env:
           RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
@@ -69,13 +69,13 @@ jobs:
             --version-id $VERSION_ID
           pytest tests/test_smoke_etl.py -q
 
-  # 2) Item‑ETL: fetch PoB → load_items → smoke‑test
   item-etl:
     name: Item ETL
     needs: tree-etl
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -87,12 +87,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Fetch PoB data
+      - name: Ensure db directory exists & create schema
         run: |
-          python scripts/fetch_pob_data.py
+          mkdir -p db
+          python scripts/setup_db.py
+
+      - name: Fetch PoB data
+        run: python scripts/fetch_pob_data.py
 
       - name: Load items & run smoke‑tests
         run: |
-          python scripts/setup_db.py       # ensure item tables exist
           python scripts/load_items.py
           pytest tests/test_smoke_items_etl.py -q
