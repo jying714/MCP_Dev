@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import pytest
 
-class SmokeBossETLTest:
+class TestSmokeBossETL:
     @classmethod
     def setup_class(cls):
         # Set up paths and load raw JSON fixtures
@@ -20,9 +20,9 @@ class SmokeBossETLTest:
 
         # Open DB connection and determine latest version
         cls.conn = sqlite3.connect(str(cls.db_path))
-        cur = cls.conn.execute("SELECT MAX(version_id) FROM boss_versions;")
+        cur = cls.conn.execute("SELECT MAX(version_id) FROM boss_versions")
         result = cur.fetchone()
-        assert result is not None, "boss_versions table is empty"
+        assert result and result[0] is not None, "boss_versions table is empty"
         cls.version_id = result[0]
 
     @classmethod
@@ -32,7 +32,7 @@ class SmokeBossETLTest:
     def test_raw_snapshots_count(self):
         # Expect two raw snapshots: bosses and boss_skills
         cur = self.conn.execute(
-            "SELECT COUNT(*) FROM raw_boss_snapshots WHERE version_id = ?;",
+            "SELECT COUNT(*) FROM raw_boss_snapshots WHERE version_id = ?",
             (self.version_id,)
         )
         count = cur.fetchone()[0]
@@ -42,7 +42,7 @@ class SmokeBossETLTest:
         # Number of bosses loaded should match JSON
         expected = len(self.bosses_raw)
         cur = self.conn.execute(
-            "SELECT COUNT(*) FROM bosses WHERE version_id = ?;",
+            "SELECT COUNT(*) FROM bosses WHERE version_id = ?",
             (self.version_id,)
         )
         count = cur.fetchone()[0]
@@ -51,7 +51,7 @@ class SmokeBossETLTest:
     def test_boss_skills_loaded(self):
         # There should be at least one boss skill loaded
         cur = self.conn.execute(
-            "SELECT COUNT(*) FROM boss_skills WHERE boss_id IN (SELECT id FROM bosses WHERE version_id = ?);",
+            "SELECT COUNT(*) FROM boss_skills WHERE boss_id IN (SELECT id FROM bosses WHERE version_id = ?)",
             (self.version_id,)
         )
         count = cur.fetchone()[0]
@@ -60,7 +60,7 @@ class SmokeBossETLTest:
     def test_unmatched_skills_recorded(self):
         # Cortex Ground Degen should be recorded as unmatched
         cur = self.conn.execute(
-            "SELECT skill_key FROM unmatched_skills WHERE version_id = ?;",
+            "SELECT skill_key FROM unmatched_skills WHERE version_id = ?",
             (self.version_id,)
         )
         unmatched = {row[0] for row in cur.fetchall()}
@@ -70,13 +70,13 @@ class SmokeBossETLTest:
         # Ensure override skills are not in unmatched and are present in boss_skills
         for skill in ["Eater Beam", "Exarch Ball"]:
             cur_unmatched = self.conn.execute(
-                "SELECT 1 FROM unmatched_skills WHERE version_id = ? AND skill_key = ?;",
+                "SELECT 1 FROM unmatched_skills WHERE version_id = ? AND skill_key = ?",
                 (self.version_id, skill)
             )
             assert cur_unmatched.fetchone() is None, f"Override skill '{skill}' should not be in unmatched_skills"
 
             cur_skill = self.conn.execute(
-                "SELECT 1 FROM boss_skills WHERE skill_key = ? AND boss_id IN (SELECT id FROM bosses WHERE version_id = ?);",
+                "SELECT 1 FROM boss_skills WHERE skill_key = ? AND boss_id IN (SELECT id FROM bosses WHERE version_id = ?)",
                 (skill, self.version_id)
             )
             assert cur_skill.fetchone() is not None, f"Override skill '{skill}' should be loaded into boss_skills"
