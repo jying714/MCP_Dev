@@ -24,6 +24,7 @@ jobs:
     outputs:
       version_id: ${{ steps.register.outputs.version_id }}
       raw_path:    ${{ steps.fetch.outputs.raw_path }}
+      timestamp:   ${{ steps.fetch.outputs.timestamp }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +41,9 @@ jobs:
         id: fetch
         run: |
           RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
-          echo "raw_path=$RAW_PATH" >> $GITHUB_OUTPUT
+          BASENAME=$(basename "$RAW_PATH")
+          echo "raw_path=$RAW_PATH"    >> $GITHUB_OUTPUT
+          echo "timestamp=$BASENAME"   >> $GITHUB_OUTPUT
 
       - name: Register version in DB
         id: register
@@ -49,7 +52,7 @@ jobs:
         run: |
           version_id=$(python scripts/register_tree_version.py \
             --json-file "${{ steps.fetch.outputs.raw_path }}" \
-            --timestamp "$(basename "${{ steps.fetch.outputs.raw_path }}")" \
+            --timestamp "${{ steps.fetch.outputs.timestamp }}" \
             --return-version-id)
           echo "version_id=$version_id" >> $GITHUB_OUTPUT
 
@@ -57,8 +60,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f "${{ steps.fetch.outputs.raw_path }}"
-          git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.raw_path##*/ }}" || echo "no changes to commit"
+          git add -f "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
+          git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}" || echo "no changes to commit"
           git push
 
   load-and-test:
@@ -87,8 +90,8 @@ jobs:
         run: python scripts/migrate_add_error_and_starting_tables.py || true
 
       - name: Copy DB for smoke tests
-        # Make the same database available under TEST_DB_PATH
         run: cp db/passive_tree.db passive_tree_copy.db
+
       - name: Set TEST_DB_PATH
         run: echo "TEST_DB_PATH=passive_tree_copy.db" >> $GITHUB_ENV
 
