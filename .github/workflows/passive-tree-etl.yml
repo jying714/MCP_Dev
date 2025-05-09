@@ -1,29 +1,23 @@
-name: MCP ETL Pipeline
+# .github/workflows/passive-tree-etl.yml
+
+name: Passive Tree & Boss ETL
 
 on:
-  schedule:
-    - cron: '0 2 * * *'     # daily at 02:00 UTC
-  workflow_dispatch:        # manual run
   push:
-    paths:
-      - 'requirements.txt'
-      - 'scripts/**'
-      - 'data/**'
-      - 'tests/**'
-      - '.github/workflows/passive-tree-etl.yml'
+    branches: [ main ]
   pull_request:
-    paths:
-      - 'scripts/**'
-      - 'data/**'
-      - 'tests/**'
+    branches: [ main ]
+  schedule:
+    # daily at 02:00 UTC
+    - cron:  '0 2 * * *'
 
 jobs:
-  tree-etl:
-    name: Passive‑Tree + Ascendancy ETL
+  etl:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,74 +29,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ensure db directory exists & create schema
-        run: |
-          mkdir -p db
-          python scripts/setup_db.py
+      - name: Initialize database schema
+        run: python scripts/setup_db.py
 
-      - name: Fetch & snapshot tree401.json
-        id: fetch_tree
-        run: |
-          mkdir -p data/raw_trees
-          raw_path=$(python scripts/FetchAndLoadTree401.py)
-          echo "RAW_PATH=$raw_path" >> $GITHUB_OUTPUT
+      - name: Apply boss table migrations
+        run: python migrations/migrate_add_boss_tables.py
 
-      - name: Register version in DB
-        id: register_tree
-        env:
-          DB_URL: ${{ secrets.DB_URL }}
-        run: |
-          version_id=$(python scripts/register_tree_version.py \
-            --json-file "${{ steps.fetch_tree.outputs.RAW_PATH }}" \
-            --timestamp "$(basename "${{ steps.fetch_tree.outputs.RAW_PATH }}" .json)" \
-            --return-version-id)
-          echo "VERSION_ID=$version_id" >> $GITHUB_OUTPUT
+      # Passive Tree ETL
+      - name: Fetch & Load Passive Tree
+        run: python scripts/fetch_and_load_tree401.py
 
-      - name: Load passive tree & run passive smoke‑tests
-        env:
-          RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
-          VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
-        run: |
-          python scripts/migrate_add_error_and_starting_tables.py || true
-          python scripts/load_tree401.py \
-            --json-file "$RAW_PATH" \
-            --version-id $VERSION_ID
-          pytest tests/test_smoke_etl.py -q
+      - name: Load Passive Tree into DB
+        run: python scripts/load_tree401.py
 
-      - name: Run ascendancy smoke‑tests
-        env:
-          RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
-          VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
-        run: |
-          pytest tests/test_smoke_ascendancy_etl.py -q
+      # Ascendancy ETL
+      - name: Fetch & Load Ascendancy Data
+        run: python scripts/fetch_ascendancy_data.py
 
-  item-etl:
-    name: Item ETL
-    needs: tree-etl
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Load Ascendancy into DB
+        run: python scripts/load_ascendancy.py
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Ensure db directory exists & create schema
-        run: |
-          mkdir -p db
-          python scripts/setup_db.py
-
-      - name: Fetch PoB data
+      # Item ETL
+      - name: Fetch PoB Item Data
         run: python scripts/fetch_pob_data.py
 
-      - name: Load items & run item smoke‑tests
-        run: |
-          python scripts/load_items.py
-          pytest tests/test_smoke_items_etl.py -q
+      - name: Load Items into DB
+        run: python scripts/load_items.py
+
+      # Boss ETL
+      - name: Fetch Boss Data
+        run: python scripts/fetch_pob_boss_data.py
+
+      - name: Load Boss ETL
+        run: python scripts/load_bosses.py
+
+      # Smoke Tests
+      - name: Run Passive ETL Smoke Tests
+        run: pytest tests/test_smoke_etl.py
+
+      - name: Run Ascendancy ETL Smoke Tests
+        run: pytest tests/test_smoke_ascendancy_etl.py
+
+      - name: Run Item ETL Smoke Tests
+        run: pytest tests/test_smoke_items_etl.py
+
+      - name: Run Boss ETL Smoke Tests
+        run: pytest tests/test_smoke_boss_etl.py
