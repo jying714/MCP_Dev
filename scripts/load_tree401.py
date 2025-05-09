@@ -140,16 +140,26 @@ def load_edges(conn, vid, nodes):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
         for c in n.get("connections", []):
-            cid = int(c["id"]) if isinstance(c, dict) else int(c)
-            radius = c.get("radius") if isinstance(c, dict) else None
+            # extract connection ID and (optional) radius
+            if isinstance(c, dict):
+                cid = int(c.get("id", 0))
+                radius = c.get("radius")
+            else:
+                cid = int(c)
+                radius = None
 
-            if nid == cid:
-                conn.execute(EDGE_ERROR_SQL, (vid, nid, cid, "self_loop", radius))
-            elif isinstance(radius, int) and radius >= 1_000_000_000:
-                conn.execute(EDGE_ERROR_SQL, (vid, nid, cid, "outlier_radius", radius))
+            # only pass the three values your INSERT expects
+            params = (nid, cid, vid)
 
-            conn.execute(EDGE_INSERT_SQL, (nid, cid, vid))
-    logger.info("Loaded raw edges")
+            # DEBUG: show the SQL and the tuple
+            print(f"[DEBUG] EDGE_INSERT_SQL = '{EDGE_INSERT_SQL.strip()}'")
+            print(f"[DEBUG] params = {params} (len={len(params)})")
+
+            try:
+                conn.execute(EDGE_INSERT_SQL, params)
+            except Exception as e:
+                print(f"[ERROR] Failed to insert edge with params={params}: {e}")
+                raise
 
 def mirror_edges(conn, vid):
     conn.execute("""
