@@ -1,9 +1,9 @@
-name: MCP ETL Pipeline
+name: Passive Tree ETL
 
 on:
   schedule:
-    - cron: '0 2 * * *'     # daily at 02:00 UTC
-  workflow_dispatch:        # manual run
+    - cron: '0 2 * * *'
+  workflow_dispatch:
   push:
     paths:
       - 'requirements.txt'
@@ -18,15 +18,16 @@ on:
       - 'tests/**'
 
 jobs:
-  tree-etl:
-    name: Passive‑Tree ETL
+  fetch-and-register:
+    name: Fetch & Register Version
     runs-on: ubuntu-latest
+    outputs:
+      version_id: ${{ steps.register.outputs.version_id }}
+      raw_path:    ${{ steps.fetch.outputs.raw_path }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
@@ -35,50 +36,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ensure db directory exists & create schema
+      - name: Fetch tree401.json snapshot
+        id: fetch
         run: |
-          mkdir -p db
-          python scripts/setup_db.py
-
-      - name: Fetch & snapshot tree401.json
-        id: fetch_tree
-        run: |
-          mkdir -p data/raw_trees
-          raw_path=$(python scripts/FetchAndLoadTree401.py)
-          echo "RAW_PATH=$raw_path" >> $GITHUB_OUTPUT
+          RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
+          echo "raw_path=$RAW_PATH" >> $GITHUB_OUTPUT
 
       - name: Register version in DB
-        id: register_tree
+        id: register
         env:
           DB_URL: ${{ secrets.DB_URL }}
         run: |
           version_id=$(python scripts/register_tree_version.py \
-            --json-file "${{ steps.fetch_tree.outputs.RAW_PATH }}" \
-            --timestamp "$(basename "${{ steps.fetch_tree.outputs.RAW_PATH }}" .json)" \
+            --json-file "${{ steps.fetch.outputs.raw_path }}" \
+            --timestamp "$(basename "${{ steps.fetch.outputs.raw_path }}")" \
             --return-version-id)
-          echo "VERSION_ID=$version_id" >> $GITHUB_OUTPUT
+          echo "version_id=$version_id" >> $GITHUB_OUTPUT
 
-      - name: Load passive tree & run smoke‑tests
-        env:
-          RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
-          VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
+      - name: Commit raw JSON snapshot
         run: |
-          python scripts/migrate_add_error_and_starting_tables.py || true
-          python scripts/load_tree401.py \
-            --json-file "$RAW_PATH" \
-            --version-id $VERSION_ID
-          pytest tests/test_smoke_etl.py -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f "${{ steps.fetch.outputs.raw_path }}"
+          git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.raw_path##*/ }}" || echo "no changes to commit"
+          git push
 
-  item-etl:
-    name: Item ETL
-    needs: tree-etl
+  load-and-test:
+    name: Load Tree & Smoke‑Test
+    needs: fetch-and-register
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
@@ -87,15 +77,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ensure db directory exists & create schema
-        run: |
-          mkdir -p db
-          python scripts/setup_db.py
+      - name: Ensure db directory exists
+        run: mkdir -p db
 
-      - name: Fetch PoB data
-        run: python scripts/fetch_pob_data.py
+      - name: Initialize SQLite schema
+        run: python scripts/setup_db.py
 
-      - name: Load items & run smoke‑tests
+      - name: Apply passive‑tree migrations
+        run: python scripts/migrate_add_error_and_starting_tables.py || true
+
+      - name: Copy DB for smoke tests
+        # Make the same database available under TEST_DB_PATH
+        run: cp db/passive_tree.db passive_tree_copy.db
+      - name: Set TEST_DB_PATH
+        run: echo "TEST_DB_PATH=passive_tree_copy.db" >> $GITHUB_ENV
+
+      - name: Load passive tree into SQLite
+        env:
+          VERSION_ID: ${{ needs.fetch-and-register.outputs.version_id }}
+          RAW_PATH:    ${{ needs.fetch-and-register.outputs.raw_path }}
+          DB_URL:      ${{ secrets.DB_URL }}
         run: |
-          python scripts/load_items.py
-          pytest tests/test_smoke_items_etl.py -q
+          python scripts/load_tree401.py \
+            --json-file "$RAW_PATH" \
+            --version-id $VERSION_ID
+
+      - name: Load items into SQLite
+        run: python scripts/load_items.py
+
+      - name: Run smoke tests
+        run: pytest --maxfail=1 --disable-warnings -q tests/test_smoke_*.py
