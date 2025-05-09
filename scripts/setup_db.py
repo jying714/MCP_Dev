@@ -6,16 +6,28 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent.parent / "db" / "passive_tree.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-# 2. Full DDL for both passive‐tree and item tables
+# 2. DDL statements
 DDL = """
 PRAGMA foreign_keys = OFF;
 
--- Drop-and-recreate passive-tree tables (so upgrades take effect cleanly)
-DROP TABLE IF EXISTS node_edges;
-DROP TABLE IF EXISTS node_errors;
-DROP TABLE IF EXISTS edge_errors;
+-- Drop existing tables so schema upgrades take effect cleanly
+DROP TABLE IF EXISTS ascendancy_nodes;
+DROP TABLE IF EXISTS raw_ascendancy_snapshots;
+DROP TABLE IF EXISTS ascendancy_versions;
+
+DROP TABLE IF EXISTS monster_skills;
+DROP TABLE IF EXISTS gems;
+DROP TABLE IF EXISTS unique_mods;
+DROP TABLE IF EXISTS unique_items;
+DROP TABLE IF EXISTS base_items;
+DROP TABLE IF EXISTS raw_item_snapshots;
+DROP TABLE IF EXISTS item_versions;
+
 DROP TABLE IF EXISTS starting_nodes;
+DROP TABLE IF EXISTS edge_errors;
+DROP TABLE IF EXISTS node_errors;
 DROP TABLE IF EXISTS node_effects;
+DROP TABLE IF EXISTS node_edges;
 DROP TABLE IF EXISTS passive_nodes;
 DROP TABLE IF EXISTS raw_trees;
 DROP TABLE IF EXISTS tree_versions;
@@ -104,7 +116,7 @@ CREATE TABLE IF NOT EXISTS starting_nodes (
   PRIMARY KEY (version_id, node_id)
 );
 
--- Item‐ETL versioning
+-- Item‑ETL versioning
 CREATE TABLE IF NOT EXISTS item_versions (
   version_id   INTEGER PRIMARY KEY AUTOINCREMENT,
   version_tag  TEXT      UNIQUE,
@@ -166,14 +178,46 @@ CREATE TABLE IF NOT EXISTS monster_skills (
   metadata   TEXT,
   PRIMARY KEY (skill_name, version_id)
 );
+
+-- Ascendancy versioning & data
+CREATE TABLE IF NOT EXISTS ascendancy_versions (
+  version_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  version_tag  TEXT      UNIQUE,
+  fetched_at   DATETIME  NOT NULL,
+  source       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS raw_ascendancy_snapshots (
+  version_id INTEGER PRIMARY KEY
+    REFERENCES ascendancy_versions(version_id)
+    ON DELETE CASCADE,
+  raw_json   TEXT      NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ascendancy_nodes (
+  ascendancy TEXT    NOT NULL,
+  node_id    INTEGER NOT NULL,
+  version_id INTEGER NOT NULL
+    REFERENCES ascendancy_versions(version_id)
+    ON DELETE CASCADE,
+  x          INTEGER,
+  y          INTEGER,
+  node_type  TEXT,
+  name       TEXT,
+  description TEXT,
+  PRIMARY KEY (ascendancy, node_id, version_id)
+);
+
+PRAGMA foreign_keys = ON;
 """
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    conn.executescript(DDL)
+    cursor = conn.cursor()
+    cursor.executescript(DDL)
     conn.commit()
     conn.close()
-    print(f"✅ Schema created/updated at {DB_PATH}")
+    print(f"✅ Schema created (or updated) in {DB_PATH}")
 
 if __name__ == "__main__":
     main()
