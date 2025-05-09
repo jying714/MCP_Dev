@@ -43,11 +43,12 @@ jobs:
       - name: Fetch tree401.json
         id: fetch
         run: |
-          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
           mkdir -p data/raw_trees
-          python scripts/fetch_pob_data.py \
-            --output data/raw_trees/${TIMESTAMP}.json
-          echo "::set-output name=timestamp::$TIMESTAMP"
+          RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
+          echo "raw_path=$RAW_PATH" >> $GITHUB_OUTPUT
+
+      - name: List raw_trees directory
+        run: ls -l data/raw_trees
 
       - name: Register version in DB
         id: register
