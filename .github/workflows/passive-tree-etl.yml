@@ -1,12 +1,9 @@
 name: Passive Tree ETL
 
 on:
-  # MVP schedule: run every day at 02:00 UTC
   schedule:
-    - cron: '0 2 * * *'
-  # allow manual runs
-  workflow_dispatch:
-  # still run on code changes to ETL scripts, schema, tests, etc.
+    - cron: '0 2 * * *'           # daily at 02:00 UTC
+  workflow_dispatch:              # manual run
   push:
     paths:
       - 'requirements.txt'
@@ -20,12 +17,18 @@ on:
       - 'data/**'
       - 'tests/**'
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   fetch-and-register:
     name: Fetch & Register Version
     runs-on: ubuntu-latest
     outputs:
       version_id: ${{ steps.register.outputs.version_id }}
+      raw_path:    ${{ steps.fetch.outputs.raw_path }}
+      timestamp:   ${{ steps.fetch.outputs.timestamp }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,12 +43,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Fetch tree401.json
+      - name: Fetch tree401.json snapshot
         id: fetch
         run: |
           mkdir -p data/raw_trees
           RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
-          echo "raw_path=$RAW_PATH" >> $GITHUB_OUTPUT
+          TIMESTAMP=$(basename "$RAW_PATH")
+          echo "raw_path=$RAW_PATH"    >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP"  >> $GITHUB_OUTPUT
 
       - name: List raw_trees directory
         run: ls -l data/raw_trees
@@ -57,15 +62,15 @@ jobs:
         run: |
           python scripts/register_tree_version.py \
             --json-file "${{ steps.fetch.outputs.raw_path }}" \
-            --timestamp "${{ steps.fetch.outputs.raw_path##*/ }}" \
+            --timestamp "${{ steps.fetch.outputs.timestamp }}" \
             --return-version-id | tee version_id.txt
-          echo "::set-output name=version_id::$(cat version_id.txt)"
+          echo "version_id=$(cat version_id.txt)" >> $GITHUB_OUTPUT
 
-      - name: Commit raw JSON
+      - name: Commit raw JSON snapshot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json
+          git add "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
           git push
 
@@ -99,7 +104,7 @@ jobs:
       - name: Load passive tree into SQLite
         env:
           VERSION_ID: ${{ needs.fetch-and-register.outputs.version_id }}
-          RAW_PATH: ${{ needs.fetch-and-register.outputs.raw_path }}
+          RAW_PATH:    ${{ needs.fetch-and-register.outputs.raw_path }}
         run: |
           python scripts/load_tree401.py \
             --json-file "$RAW_PATH" \
