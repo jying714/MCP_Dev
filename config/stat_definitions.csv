@@ -1,0 +1,11 @@
+stat_key,unit,description
+CannotBeBlocked,BOOLEAN,"Skill cannot be blocked"
+CannotBeDodged,BOOLEAN,"Skill cannot be dodged"
+CannotBeEvaded,BOOLEAN,"Skill cannot be evaded"
+CannotBeSuppressed,BOOLEAN,"Skill cannot be suppressed"
+FirePen,PERCENT,"Fire penetration %"
+ColdPen,PERCENT,"Cold penetration %"
+PhysicalDamageSkillConvertToFire,PERCENT,"Portion of physical damage converted to Fire"
+additionalStatSet1,STRING,"Additional granted effect identifier #1"
+gameId,STRING,"Internal game identifier for the gem or node"
+tags,JSON,"Raw tags JSON blob"
