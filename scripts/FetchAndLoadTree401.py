@@ -1,19 +1,20 @@
-# scripts/FetchAndLoadTree401.py
 #!/usr/bin/env python3
 import requests
 import json
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # === Path setup ===
 HERE         = Path(__file__).parent
 PROJECT_ROOT = HERE.parent
 DATA_DIR     = PROJECT_ROOT / "data"
+RAW_DIR      = DATA_DIR / "raw_trees"
 LOG_DIR      = PROJECT_ROOT / "logs" / "fetch_and_load_tree401"
 
 # Ensure directories exist
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+for d in (DATA_DIR, RAW_DIR, LOG_DIR):
+    d.mkdir(parents=True, exist_ok=True)
 
 # === Logging Setup ===
 LOG_FILE = LOG_DIR / "fetch_and_load_tree401.log"
@@ -31,21 +32,37 @@ HEADERS = {
 }
 
 def main():
-    out_file = DATA_DIR / "tree401.json"
     try:
         logger.info(f"Fetching {URL}")
-        resp = requests.get(URL, headers=HEADERS)
+        resp = requests.get(URL, headers=HEADERS, timeout=30)
         resp.raise_for_status()
         payload = resp.json()
 
-        with out_file.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+        # 1) Prepare timestamp and raw_trees dir
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        raw_path = RAW_DIR / f"{timestamp}.json"
 
-        logger.info(f"Saved tree401.json to {out_file}")
-        print(f"✅ tree401.json saved to {out_file}")
+        # 2) Write the versioned snapshot
+        with raw_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        logger.info(f"Wrote raw snapshot to {raw_path}")
+
+        # 3) Overwrite the latest file for backward compatibility
+        latest = DATA_DIR / "tree401.json"
+        with latest.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        logger.info(f"Updated latest JSON at {latest}")
+
+        # 4) Print only the raw snapshot path for downstream capture
+        print(str(raw_path))
+
     except requests.RequestException as e:
         logger.error(f"Error fetching JSON: {e}")
         print(f"❌ Error fetching JSON: {e}")
+        exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error")
+        print(f"❌ Unexpected error: {e}")
         exit(1)
 
 if __name__ == "__main__":
