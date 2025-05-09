@@ -3,7 +3,7 @@ name: MCP ETL Pipeline
 on:
   schedule:
     - cron: '0 2 * * *'     # daily at 02:00 UTC
-  workflow_dispatch:
+  workflow_dispatch:        # manual run
   push:
     paths:
       - 'requirements.txt'
@@ -21,9 +21,7 @@ jobs:
   tree-etl:
     name: Passive‑Tree ETL
     runs-on: ubuntu-latest
-    outputs:
-      version_id: ${{ steps.register_tree.outputs.VERSION_ID }}
-      raw_path:    ${{ steps.fetch_tree.outputs.RAW_PATH }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,13 +36,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare database
+      - name: Ensure db directory exists & create schema
         run: |
           mkdir -p db
           python scripts/setup_db.py
-        # Export DB_URL so SQLAlchemy can open it
-      - name: Export DB_URL
-        run: echo "DB_URL=sqlite://${{ github.workspace }}/db/passive_tree.db" >> $GITHUB_ENV
 
       - name: Fetch & snapshot tree401.json
         id: fetch_tree
@@ -55,21 +50,22 @@ jobs:
 
       - name: Register version in DB
         id: register_tree
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
         run: |
-          VERSION_ID=$(python scripts/register_tree_version.py \
+          version_id=$(python scripts/register_tree_version.py \
             --json-file "${{ steps.fetch_tree.outputs.RAW_PATH }}" \
             --timestamp "$(basename "${{ steps.fetch_tree.outputs.RAW_PATH }}" .json)" \
             --return-version-id)
-          echo "VERSION_ID=$VERSION_ID" >> $GITHUB_OUTPUT
-
-      - name: Migrate passive‑tree extras
-        run: python scripts/migrate_add_error_and_starting_tables.py || true
+          echo "VERSION_ID=$version_id" >> $GITHUB_OUTPUT
 
       - name: Load passive tree & run smoke‑tests
         env:
-          RAW_PATH:   ${{ steps.fetch_tree.outputs.RAW_PATH }}
+          RAW_PATH: ${{ steps.fetch_tree.outputs.RAW_PATH }}
           VERSION_ID: ${{ steps.register_tree.outputs.VERSION_ID }}
         run: |
+          # in case you have migrations to apply first:
+          python scripts/migrate_add_error_and_starting_tables.py || true
           python scripts/load_tree401.py \
             --json-file "$RAW_PATH" \
             --version-id $VERSION_ID
@@ -79,6 +75,7 @@ jobs:
     name: Item ETL
     needs: tree-etl
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -93,12 +90,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare database
+      - name: Ensure db directory exists & create schema
         run: |
           mkdir -p db
           python scripts/setup_db.py
-      - name: Export DB_URL
-        run: echo "DB_URL=sqlite://${{ github.workspace }}/db/passive_tree.db" >> $GITHUB_ENV
 
       - name: Fetch PoB data
         run: python scripts/fetch_pob_data.py
