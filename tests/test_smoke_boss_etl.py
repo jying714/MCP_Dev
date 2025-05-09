@@ -80,3 +80,64 @@ class TestSmokeBossETL:
                 (skill, self.version_id)
             )
             assert cur_skill.fetchone() is not None, f"Override skill '{skill}' should be loaded into boss_skills"
+
+    # New tests for normalized schema
+    def test_core_table_count(self):
+        # Core table should match legacy count
+        legacy = self.conn.execute(
+            "SELECT COUNT(*) FROM boss_skills WHERE boss_id IN (SELECT id FROM bosses WHERE version_id = ?)",
+            (self.version_id,)
+        ).fetchone()[0]
+        core = self.conn.execute(
+            "SELECT COUNT(*) FROM boss_skills_core WHERE boss_id IN (SELECT id FROM bosses WHERE version_id = ?)",
+            (self.version_id,)
+        ).fetchone()[0]
+        assert core == legacy, f"Expected boss_skills_core count {legacy}, got {core}"
+
+    def test_sample_multiplier_entry(self):
+        # For Atziri Flameblast, multiplier table has correct Fire entry
+        # Find skill_id
+        skill_id = self.conn.execute("""
+            SELECT c.id
+              FROM boss_skills_core c
+              JOIN bosses b ON c.boss_id = b.id
+             WHERE b.version_id = ? AND c.skill_key = ?
+        """, (self.version_id, "Atziri Flameblast")).fetchone()[0]
+        # JSON value
+        expected_base, expected_ratio = self.boss_skills_raw["Atziri Flameblast"]["DamageMultipliers"]["Fire"]
+        row = self.conn.execute("""
+            SELECT base_value, ratio_value
+              FROM boss_skill_multipliers
+             WHERE skill_id = ? AND damage_type = 'Fire'
+        """, (skill_id,)).fetchone()
+        assert row is not None, "Multiplier row for Fire missing"
+        base, ratio = row
+        assert abs(base - expected_base) < 1e-6 and abs(ratio - expected_ratio) < 1e-6, \
+            f"Expected Fire multiplier ({expected_base}, {expected_ratio}), got ({base}, {ratio})"
+
+    def test_penetration_values(self):
+        # For Atziri Flameblast, base_pen=8 and uber_pen=10
+        skill_id = self.conn.execute("""
+            SELECT id FROM boss_skills_core
+             WHERE boss_id IN (SELECT id FROM bosses WHERE version_id = ?)
+               AND skill_key = ?
+        """, (self.version_id, "Atziri Flameblast")).fetchone()[0]
+        row = self.conn.execute("""
+            SELECT base_pen, uber_pen
+              FROM boss_skill_penetrations
+             WHERE skill_id = ? AND pen_type = 'FirePen'
+        """, (skill_id,)).fetchone()
+        assert row == (8, 10), f"Expected FirePen (8,10), got {row}"
+
+    def test_additional_stats_flag(self):
+        # For Shaper Slam in uber phase, CannotBeBlocked should be a flag
+        skill_id = self.conn.execute("""
+            SELECT id FROM boss_skills_core
+             WHERE skill_key = ? AND boss_id IN (SELECT id FROM bosses WHERE version_id = ?)
+        """, ("Shaper Slam", self.version_id)).fetchone()[0]
+        row = self.conn.execute("""
+            SELECT stat_value, is_flag
+              FROM boss_skill_additional_stats
+             WHERE skill_id = ? AND phase = 'uber' AND stat_key = 'CannotBeBlocked'
+        """, (skill_id,)).fetchone()
+        assert row == (None, 1), f"Expected unable-to-block flag (None,1), got {row}"

@@ -77,7 +77,7 @@ def load_boss_etl():
     LIMIT 1;
     """
 
-    # 6) assign skills
+    # 6) assign skills and populate normalized tables
     for skill_key, info in skills.items():
         row = cur.execute(
             FIND_BOSS_SQL,
@@ -94,6 +94,8 @@ def load_boss_etl():
             continue
 
         boss_id = row[0]
+
+        # 6a) legacy insert
         cur.execute("""
         INSERT INTO boss_skills
           (boss_id, skill_key, name, description, cooldown, tags)
@@ -106,6 +108,67 @@ def load_boss_etl():
             info.get("speed"),
             json.dumps(info.get("tags", {}))
         ))
+
+        # 6b) normalized core table
+        cur.execute("""
+        INSERT OR IGNORE INTO boss_skills_core
+          (boss_id, skill_key, name, damage_type, base_speed,
+           crit_chance, uber_multiplier, uber_speed, earlier_uber_flag, tooltip)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            boss_id,
+            skill_key,
+            info.get("tooltip"),
+            info.get("DamageType"),
+            info.get("speed"),
+            info.get("critChance", 0),
+            info.get("UberDamageMultiplier"),
+            info.get("UberSpeed"),
+            1 if info.get("earlierUber") else 0,
+            info.get("tooltip"),
+        ))
+        # fetch the newly inserted or existing core ID
+        skill_id = cur.execute(
+            "SELECT id FROM boss_skills_core WHERE boss_id=? AND skill_key=?",
+            (boss_id, skill_key)
+        ).fetchone()[0]
+
+        # 6c) multipliers
+        for dmg_type, (base, ratio) in info.get("DamageMultipliers", {}).items():
+            cur.execute("""
+            INSERT OR REPLACE INTO boss_skill_multipliers
+              (skill_id, damage_type, base_value, ratio_value)
+            VALUES (?, ?, ?, ?);
+            """, (skill_id, dmg_type, base, ratio))
+
+        # 6d) penetrations (base vs uber)
+        for phase, pen_dict in (("base", info.get("DamagePenetrations", {})),
+                                ("uber", info.get("UberDamagePenetrations", {}))):
+            for pen_type, pen_val in pen_dict.items():
+                # ensure row exists
+                cur.execute("""
+                INSERT OR IGNORE INTO boss_skill_penetrations
+                  (skill_id, pen_type)
+                VALUES (?, ?);
+                """, (skill_id, pen_type))
+                # update the appropriate column
+                col = "base_pen" if phase == "base" else "uber_pen"
+                cur.execute(f"""
+                UPDATE boss_skill_penetrations
+                   SET {col} = ?
+                 WHERE skill_id = ? AND pen_type = ?;
+                """, (pen_val or 0, skill_id, pen_type))
+
+        # 6e) additional stats (base vs uber)
+        for phase in ("base", "uber"):
+            for stat_key, stat_val in info.get("additionalStats", {}).get(phase, {}).items():
+                is_flag = 1 if stat_val == "flag" else 0
+                val = None if is_flag else stat_val
+                cur.execute("""
+                INSERT OR REPLACE INTO boss_skill_additional_stats
+                  (skill_id, phase, stat_key, stat_value, is_flag)
+                VALUES (?, ?, ?, ?, ?);
+                """, (skill_id, phase, stat_key, val, is_flag))
 
     conn.commit()
     conn.close()

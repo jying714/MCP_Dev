@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sqlite3
+import glob
 from pathlib import Path
 
 # Compute paths
@@ -255,7 +256,19 @@ def run_setup(db_path: str = str(DB_PATH)):
     );
     """)
 
+    # commit baseline schema
     conn.commit()
+
+    #
+    # ─── AUTOMATIC MIGRATIONS ─────────────────────────────────────────────────────
+    #
+    migration_files = sorted(glob.glob(str(SCRIPT_DIR.parent / "migrations" / "*.sql")))
+    for mfile in migration_files:
+        print(f"Applying migration {Path(mfile).name}…")
+        with open(mfile, "r", encoding="utf-8") as f:
+            conn.executescript(f.read())
+    conn.commit()
+
     conn.close()
     print(f"✅ Database schema is up to date ({db_path})")
 

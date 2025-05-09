@@ -30,7 +30,8 @@ jobs:
         run: python scripts/setup_db.py
 
       - name: Seed boss‑skill overrides
-        run: sqlite3 db/passive_tree.db < migrations/005_seed_skill_to_boss.sql
+        run: |
+          sqlite3 db/passive_tree.db < migrations/005_seed_skill_to_boss.sql
 
       # Passive Tree ETL
       - name: Fetch passive‑tree JSON
@@ -68,3 +69,5 @@ jobs:
       - name: Run Boss ETL Smoke Tests
         run: pytest tests/test_smoke_boss_etl.py
 
+      - name: Run Ascendancy ETL Smoke Tests
+        run: pytest tests/test_smoke_ascendancy_etl.py
