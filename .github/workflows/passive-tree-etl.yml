@@ -1,5 +1,3 @@
-# .github/workflows/passive-tree-etl.yml
-
 name: Passive Tree & Boss ETL
 
 on:
@@ -8,8 +6,7 @@ on:
   pull_request:
     branches: [ master, main ]
   schedule:
-    # daily at 02:00 UTC
-    - cron:  '0 2 * * *'
+    - cron: '0 2 * * *'  # daily at 02:00 UTC
 
 jobs:
   etl:
@@ -32,43 +29,39 @@ jobs:
       - name: Initialize database schema
         run: python scripts/setup_db.py
 
-      - name: Apply boss table migrations
-        run: python migrations/migrate_add_boss_tables.py
+      - name: Seed boss‑skill overrides
+        run: |
+          Get-Content migrations/005_seed_skill_to_boss.sql | sqlite3 db/passive_tree.db
 
       # Passive Tree ETL
-      - name: Fetch & Load Passive Tree
-        run: python scripts/fetch_and_load_tree401.py
+      - name: Fetch passive‑tree JSON
+        run: python scripts/FetchAndLoadTree401.py
 
-      - name: Load Passive Tree into DB
-        run: python scripts/load_tree401.py
+      - name: Register tree version
+        run: |
+          ver=$(python scripts/register_tree_version.py --json-file data/tree401.json)
+          echo "VERSION=$ver" >> $GITHUB_ENV
 
-      # Ascendancy ETL
-      - name: Fetch & Load Ascendancy Data
-        run: python scripts/fetch_ascendancy_data.py
-
-      - name: Load Ascendancy into DB
-        run: python scripts/load_ascendancy.py
+      - name: Load passive tree into DB
+        run: python scripts/load_tree401.py --json-file data/tree401.json --version-id ${{ env.VERSION }}
 
       # Item ETL
-      - name: Fetch PoB Item Data
+      - name: Fetch PoB item data
         run: python scripts/fetch_pob_data.py
 
-      - name: Load Items into DB
+      - name: Load items into DB
         run: python scripts/load_items.py
 
       # Boss ETL
-      - name: Fetch Boss Data
+      - name: Fetch boss data
         run: python scripts/fetch_pob_boss_data.py
 
-      - name: Load Boss ETL
+      - name: Load bosses into DB
         run: python scripts/load_bosses.py
 
       # Smoke Tests
       - name: Run Passive ETL Smoke Tests
         run: pytest tests/test_smoke_etl.py
-
-      - name: Run Ascendancy ETL Smoke Tests
-        run: pytest tests/test_smoke_ascendancy_etl.py
 
       - name: Run Item ETL Smoke Tests
         run: pytest tests/test_smoke_items_etl.py
