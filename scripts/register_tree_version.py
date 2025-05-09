@@ -3,11 +3,10 @@ import os
 import sys
 import json
 import argparse
-from urllib.parse import urlparse
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Table, Column, Integer, String, Text, MetaData, DateTime
+from sqlalchemy import Table, Column, Integer, String, Text, MetaData, DateTime, ForeignKey
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -38,35 +37,35 @@ def main():
     engine = sa.create_engine(db_url)
     metadata = MetaData()
 
-    # Define tables (adjust names/types to match your schema)
+    # Define tables matching your schema
     tree_versions = Table(
         "tree_versions", metadata,
         Column("version_id", Integer, primary_key=True, autoincrement=True),
-        Column("tag", String, nullable=False, unique=True),
-        Column("fetched_at", DateTime, nullable=False)
+        Column("version_tag", String, nullable=False, unique=True),
+        Column("fetched_at", DateTime, nullable=False),
+        Column("source_url", String, nullable=True),
     )
     raw_trees = Table(
         "raw_trees", metadata,
-        Column("version_id", Integer, sa.ForeignKey("tree_versions.version_id"), nullable=False),
-        Column("raw_json", Text, nullable=False)
+        Column("version_id", Integer, ForeignKey("tree_versions.version_id", ondelete="CASCADE"), primary_key=True),
+        Column("raw_json", Text, nullable=False),
     )
 
-    # Ensure tables exist (no-op if already migrated)
+    # Ensure tables exist (no-op if already in DB)
     metadata.create_all(engine)
 
     # Insert new version + raw JSON
     with engine.begin() as conn:
-        # 1) Insert into tree_versions
         now = datetime.utcnow()
         result = conn.execute(
             tree_versions.insert().values(
-                tag=args.timestamp,
-                fetched_at=now
+                version_tag=args.timestamp,
+                fetched_at=now,
+                source_url=args.json_file
             )
         )
         version_id = result.inserted_primary_key[0]
 
-        # 2) Insert into raw_trees
         conn.execute(
             raw_trees.insert().values(
                 version_id=version_id,
