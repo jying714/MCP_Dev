@@ -47,11 +47,13 @@ jobs:
         id: fetch
         run: |
           mkdir -p data/raw_trees
-          RAW_PATH=$(python scripts/FetchAndLoadTree401.py)
+          RAW_OUTPUT=$(python scripts/FetchAndLoadTree401.py)
+          RAW_PATH=$(echo "$RAW_OUTPUT" | tail -n1)
           BASENAME=$(basename "$RAW_PATH")
           TIMESTAMP=${BASENAME%.json}
           echo "raw_path=$RAW_PATH"    >> $GITHUB_OUTPUT
           echo "timestamp=$TIMESTAMP"  >> $GITHUB_OUTPUT
+          echo "$RAW_OUTPUT"
 
       - name: List raw_trees directory
         run: ls -l data/raw_trees
@@ -71,7 +73,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
+          # Force-add since data/raw_trees is git-ignored
+          git add -f "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
           git push
 
