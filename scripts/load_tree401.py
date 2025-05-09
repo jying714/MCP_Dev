@@ -1,3 +1,4 @@
+# scripts/load_tree401.py
 #!/usr/bin/env python3
 import os
 import sqlite3
@@ -64,23 +65,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 SOURCE_URL = "https://assets-ng.maxroll.gg/poe2planner/game/tree401.json"
 
 # === Helpers ===
-def upsert_version(conn):
-    tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    cur = conn.execute(
-        "INSERT INTO tree_versions(version_tag, fetched_at, source_url) VALUES (?,?,?)",
-        (tag, datetime.utcnow(), SOURCE_URL)
-    )
-    vid = cur.lastrowid
-    logger.info(f"Created version {vid} ({tag})")
-    return vid
-
-def load_raw(conn, vid, raw):
-    conn.execute(
-        "INSERT OR REPLACE INTO raw_trees(version_id, raw_json) VALUES (?,?)",
-        (vid, json.dumps(raw))
-    )
-    logger.debug("Upserted raw JSON")
-
 def extract_position(n, nid, groups):
     pos = n.get("position")
     if isinstance(pos, dict):
@@ -120,6 +104,23 @@ def compute_node_type(skill_id, details):
     return "Regular"
 
 # === Loaders ===
+def upsert_version(conn):
+    tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    cur = conn.execute(
+        "INSERT INTO tree_versions(version_tag, fetched_at, source_url) VALUES (?,?,?)",
+        (tag, datetime.utcnow(), SOURCE_URL)
+    )
+    vid = cur.lastrowid
+    logger.info(f"Created tree version {vid} ({tag})")
+    return vid
+
+def load_raw(conn, vid, raw):
+    conn.execute(
+        "INSERT OR REPLACE INTO raw_trees(version_id, raw_json) VALUES (?,?)",
+        (vid, json.dumps(raw))
+    )
+    logger.debug("Upserted raw JSON")
+
 def load_nodes(conn, vid, nodes, groups, skills):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
@@ -153,10 +154,7 @@ def load_edges(conn, vid, nodes):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
         for c in n.get("connections", []):
-            if isinstance(c, dict):
-                cid = int(c.get("id", 0))
-            else:
-                cid = int(c)
+            cid = int(c.get("id", c)) if isinstance(c, dict) else int(c)
             conn.execute(EDGE_INSERT_SQL, (nid, cid, vid))
     logger.info("Loaded raw node_edges")
 
@@ -178,11 +176,10 @@ def mirror_edges(conn, vid):
 def load_effects(conn, vid, nodes, skills):
     for nid_str, n in nodes.items():
         nid = int(nid_str)
-        sid = n.get("skill_id", "")
-        for stat in skills.get(sid, {}).get("stats", []):
+        for stat in skills.get(n.get("skill_id", ""), {}).get("stats", []):
             if isinstance(stat, dict):
                 key = stat.get("statKey") or stat.get("key")
-                val = stat.get("value") or stat.get("values")
+                val = stat.get("value") or stat.get("values") or 0
                 if isinstance(val, list) and val:
                     val = val[0]
                 try:
@@ -210,7 +207,7 @@ def load_starting_nodes(conn, vid, raw, groups, skills):
         conn.execute(STARTING_NODE_SQL, (vid, nid, cls, x, y))
     logger.info(f"Loaded {len(roots)} starting_nodes")
 
-def load_ascendancy_nodes(conn, vid, nodes, groups, skills):
+def load_ascendancy_nodes(conn, asc_vid, nodes, groups, skills):
     count = 0
     for nid_str, n in nodes.items():
         sid = n.get("skill_id", "")
@@ -218,7 +215,7 @@ def load_ascendancy_nodes(conn, vid, nodes, groups, skills):
             continue
 
         nid = int(nid_str)
-        det = skills.get(sid, {})              # skill metadata
+        det = skills.get(sid, {})
         asc = det.get("ascendancy", "")
         name = det.get("name", "")
         desc = det.get("description", "")
@@ -226,12 +223,11 @@ def load_ascendancy_nodes(conn, vid, nodes, groups, skills):
         try:
             x, y = extract_position(n, nid, groups)
         except Exception:
-            # if position fails, skip
             continue
 
-        ntype = compute_node_type(sid, det)    # will return "Ascendancy"
+        ntype = compute_node_type(sid, det)
         conn.execute(ASCENDANCY_INSERT_SQL, (
-            asc, nid, vid, x, y, ntype, name, desc
+            asc, nid, asc_vid, x, y, ntype, name, desc
         ))
         count += 1
 
@@ -258,19 +254,32 @@ def main():
 
     conn = sqlite3.connect(DB_PATH)
     try:
+        # 1) tree version
         vid = args.version_id
 
+        # 2) ascendancy version + raw snapshot
+        asc_cur = conn.execute("INSERT INTO ascendancy_versions DEFAULT VALUES;")
+        asc_vid = asc_cur.lastrowid
+        conn.execute(
+            "INSERT INTO raw_ascendancy_snapshots(version_id, raw_json) VALUES (?, ?);",
+            (asc_vid, json.dumps(raw))
+        )
+        logger.info(f"Created ascendancy version {asc_vid}")
+
+        # 3) passive tree
         load_raw(conn, vid, raw)
         load_nodes(conn, vid, nodes, groups, skills)
         load_edges(conn, vid, nodes)
         mirror_edges(conn, vid)
         load_effects(conn, vid, nodes, skills)
         load_starting_nodes(conn, vid, raw, groups, skills)
-        load_ascendancy_nodes(conn, vid, nodes, groups, skills)
+
+        # 4) ascendancy nodes
+        load_ascendancy_nodes(conn, asc_vid, nodes, groups, skills)
 
         conn.commit()
-        logger.info(f"✅ Fully loaded version {vid}")
-        print(f"✅ Loaded version {vid}")
+        logger.info(f"✅ Fully loaded tree {vid} + ascendancy {asc_vid}")
+        print(f"✅ Loaded tree version {vid} and ascendancy version {asc_vid}")
 
     except Exception:
         conn.rollback()

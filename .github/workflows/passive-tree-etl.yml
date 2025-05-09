@@ -1,3 +1,4 @@
+# .github/workflows/passive-tree-etl.yml
 name: Passive Tree & Boss ETL
 
 on:
@@ -30,19 +31,18 @@ jobs:
         run: python scripts/setup_db.py
 
       - name: Seed boss‑skill overrides
-        run: |
-          sqlite3 db/passive_tree.db < migrations/005_seed_skill_to_boss.sql
+        run: sqlite3 db/passive_tree.db ".read migrations/005_seed_skill_to_boss.sql"
 
-      # Passive Tree ETL
+      # Passive Tree & Ascendancy ETL
       - name: Fetch passive‑tree JSON
         run: python scripts/FetchAndLoadTree401.py
 
       - name: Register tree version
         run: |
-          ver=$(python scripts/register_tree_version.py --json-file data/tree401.json)
-          echo "VERSION=$ver" >> $GITHUB_ENV
+          V=$(python scripts/register_tree_version.py --json-file data/tree401.json)
+          echo "VERSION=$V" >> $GITHUB_ENV
 
-      - name: Load passive tree into DB
+      - name: Load passive tree & ascendancy into DB
         run: python scripts/load_tree401.py --json-file data/tree401.json --version-id ${{ env.VERSION }}
 
       # Item ETL
