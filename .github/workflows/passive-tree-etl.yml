@@ -63,17 +63,20 @@ jobs:
         env:
           DB_URL: ${{ secrets.DB_URL }}
         run: |
+          # write only the version_id integer to version_id.txt
           python scripts/register_tree_version.py \
             --json-file "${{ steps.fetch.outputs.raw_path }}" \
             --timestamp "${{ steps.fetch.outputs.timestamp }}" \
-            --return-version-id | tee version_id.txt
-          echo "version_id=$(cat version_id.txt)" >> $GITHUB_OUTPUT
+            --return-version-id > version_id.txt
+          # capture it into the job output
+          VERSION_ID=$(cat version_id.txt)
+          echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
 
       - name: Commit raw JSON snapshot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Force-add since data/raw_trees is git-ignored
+          # Force‑add since data/raw_trees is git‑ignored
           git add -f "data/raw_trees/${{ steps.fetch.outputs.timestamp }}.json"
           git commit -m "chore: fetch tree401.json version ${{ steps.fetch.outputs.timestamp }}"
           git push
