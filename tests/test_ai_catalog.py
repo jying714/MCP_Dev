@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import pytest
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def conn(tmp_path):
     # Copy the real DB into a temp file for isolated testing
     src = os.environ.get("TEST_DB_PATH", "db/passive_tree.db")
