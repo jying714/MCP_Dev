@@ -63,6 +63,13 @@ jobs:
       - name: Load stat definitions
         run: python scripts/load_stat_definitions.py
 
+      # Modifier Parsing
+      - name: Parse all modifiers
+        run: python scripts/parse_mods.py
+
+      - name: Run Modifier Parsing Smoke Tests
+        run: pytest tests/test_smoke_mod_parsed.py
+
       # Smoke Tests
       - name: Run Passive ETL Smoke Tests
         run: pytest tests/test_smoke_etl.py
