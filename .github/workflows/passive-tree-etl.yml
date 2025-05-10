@@ -1,3 +1,4 @@
+# .github/workflows/passive-tree-etl.yml
 name: Passive Tree & Boss ETL
 
 on:
@@ -25,16 +26,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install fastapi uvicorn
 
-      - name: Initialize database schema
+      - name: Initialize database schema & apply migrations
         run: python scripts/setup_db.py
 
       - name: Seed boss‑skill overrides
         run: sqlite3 db/passive_tree.db ".read migrations/005_seed_skill_to_boss.sql"
-
-      - name: Apply mod_parsed migration
-        run: sqlite3 db/passive_tree.db ".read migrations/009_parse_mods.sql"
 
       # Passive Tree & Ascendancy ETL
       - name: Fetch passive‑tree JSON
@@ -65,13 +62,6 @@ jobs:
       # Stat Definitions ETL
       - name: Load stat definitions
         run: python scripts/load_stat_definitions.py
-
-      # AI‑Catalog & Views Migration
-      - name: Apply AI Views migrations
-        run: sqlite3 db/passive_tree.db ".read migrations/010_views.sql"
-
-      - name: Apply fix for gem view
-        run: sqlite3 db/passive_tree.db ".read migrations/011_fix_gem_view.sql"
 
       # Smoke Tests
       - name: Run Passive ETL Smoke Tests
