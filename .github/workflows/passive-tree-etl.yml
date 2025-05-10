@@ -33,6 +33,9 @@ jobs:
       - name: Seed boss‑skill overrides
         run: sqlite3 db/passive_tree.db ".read migrations/005_seed_skill_to_boss.sql"
 
+      - name: Apply mod_parsed migration
+        run: sqlite3 db/passive_tree.db ".read migrations/009_parse_mods.sql"
+
       # Passive Tree & Ascendancy ETL
       - name: Fetch passive‑tree JSON
         run: python scripts/FetchAndLoadTree401.py
@@ -66,6 +69,9 @@ jobs:
       # AI‑Catalog & Views Migration
       - name: Apply AI Views migrations
         run: sqlite3 db/passive_tree.db ".read migrations/010_views.sql"
+
+      - name: Apply fix for gem view
+        run: sqlite3 db/passive_tree.db ".read migrations/011_fix_gem_view.sql"
 
       # Smoke Tests
       - name: Run Passive ETL Smoke Tests
