@@ -59,6 +59,10 @@ jobs:
       - name: Load bosses into DB
         run: python scripts/load_bosses.py
 
+      # Stat Definitions ETL
+      - name: Load stat definitions
+        run: python scripts/load_stat_definitions.py
+
       # Smoke Tests
       - name: Run Passive ETL Smoke Tests
         run: pytest tests/test_smoke_etl.py
