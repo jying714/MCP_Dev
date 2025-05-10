@@ -2,6 +2,7 @@
 import sqlite3
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -61,6 +62,13 @@ INSERT OR REPLACE INTO monster_skills(skill_name, version_id, metadata)
 VALUES (?, ?, ?);
 """
 
+# Modifier parsing
+INSERT_MOD_PARSED_SQL = """
+INSERT OR REPLACE INTO mod_parsed
+  (item_name, version_id, stat_key, min_value, max_value, is_range)
+VALUES (?, ?, ?, ?, ?, ?);
+"""
+
 # Normalized gem tables
 INSERT_GEMS_CORE_SQL = """
 INSERT OR REPLACE INTO gems_core
@@ -82,6 +90,9 @@ VALUES (?, ?, ?, ?);
 
 # Mark the source of PoB data
 SOURCE = "PoB-PoE2/src/Data@dev"
+
+# Regex to parse modifiers: captures min, optional max, and the rest of the text
+MOD_PATTERN = re.compile(r'([+-]?\d+\.?\d*)(?:\D+([+-]?\d+\.?\d*))?\s*(.*)')
 
 def upsert_item_version(conn):
     tag = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -119,6 +130,33 @@ def load_uniques(conn, vid, items):
             conn.execute(INSERT_UNIQUE_MOD_SQL, (name, vid, mod))
     logger.info(f"⮕ Upserted {len(items)} unique_items + modifiers")
 
+def parse_modifiers(conn, vid):
+    """
+    Parse each unique_mods.modifier into structured rows in mod_parsed.
+    """
+    cur = conn.execute(
+        "SELECT item_name, modifier FROM unique_mods WHERE version_id = ?",
+        (vid,)
+    )
+    count = 0
+    for item_name, mod in cur:
+        text = mod.replace('–','-').replace('—','-').strip()
+        m = MOD_PATTERN.match(text)
+        if not m:
+            continue
+        min_val = float(m.group(1))
+        max_val = float(m.group(2)) if m.group(2) else min_val
+        stat_text = m.group(3).strip()
+        stat_key = stat_text.replace(' ', '_').replace('%', 'Percent')
+        is_range = 1 if m.group(2) else 0
+
+        conn.execute(
+            INSERT_MOD_PARSED_SQL,
+            (item_name, vid, stat_key, min_val, max_val, is_range)
+        )
+        count += 1
+    logger.info(f"⮕ Parsed {count} modifiers into mod_parsed")
+
 def load_gems(conn, vid, items):
     for itm in items:
         gem_name = itm["baseType"]
@@ -151,19 +189,16 @@ def load_gems(conn, vid, items):
                 continue
             sval = str(val).lower()
             if key.startswith("additionalStatSet"):
-                # additional stats
                 conn.execute(
                     INSERT_GEM_ADDL_SQL,
                     (gem_name, vid, key, str(val))
                 )
             elif sval in ("true", "1"):
-                # boolean‑true becomes a tag
                 conn.execute(
                     INSERT_GEM_TAG_SQL,
                     (gem_name, vid, key)
                 )
             else:
-                # everything else is an attribute
                 conn.execute(
                     INSERT_GEM_ATTR_SQL,
                     (gem_name, vid, key, str(val))
@@ -199,12 +234,16 @@ def main():
         for cat, path in files.items():
             load_raw(conn, vid, cat, path)
 
+        # Structured loads
         data = {cat: json.loads(path.read_text(encoding="utf-8"))
                 for cat, path in files.items()}
 
-        # Structured loads
         load_bases(conn,   vid, data["bases"])
         load_uniques(conn, vid, data["uniques"])
+
+        # New: parse modifiers into mod_parsed
+        parse_modifiers(conn, vid)
+
         load_gems(conn,    vid, data["gems"])
         load_skills(conn,  vid, data["skills"])
 
