@@ -8,7 +8,6 @@ CSV_PATH = Path(__file__).parent.parent / "config" / "stat_definitions.csv"
 
 # Map each table to the column holding the key to catalog
 TABLE_KEY_COLS = {
-    "node_effects":                 "stat_key",
     "boss_skill_additional_stats":  "stat_key",
     "boss_skill_penetrations":      "pen_type",
     "gem_attributes":               "attr_key",
