@@ -2,37 +2,25 @@
 
 BEGIN;
 
-/*
-  Parsed modifiers table:
-  - source_table: which ETL table the raw modifier came from
-  - source_key:    the key (e.g. item_name, node_id, boss_id, gem_name) identifying the row
-  - raw_modifier:  the original unparsed modifier text
-  - stat_key:      the normalized stat identifier (e.g. "increased Fire Damage")
-  - operator:      "+" or "-" indicating sign
-  - magnitude_min: numeric minimum
-  - magnitude_max: numeric maximum
-  - unit:          e.g. "%", or NULL if none
-  - tags:          reserved for future use (JSON text)
-*/
+-- Drop any existing mod_parsed table to replace with the updated schema
 DROP TABLE IF EXISTS mod_parsed;
+
+-- Create the new mod_parsed table with structured columns
 CREATE TABLE mod_parsed (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_table    TEXT    NOT NULL,
-  source_key      TEXT    NOT NULL,
-  raw_modifier    TEXT    NOT NULL,
-  stat_key        TEXT,
-  operator        TEXT,
-  magnitude_min   REAL,
-  magnitude_max   REAL,
-  unit            TEXT,
-  tags            TEXT
+  item_name    TEXT    NOT NULL,
+  version_id   INTEGER NOT NULL REFERENCES item_versions(version_id),
+  stat_key     TEXT    NOT NULL,
+  min_value    REAL,
+  max_value    REAL,
+  is_range     BOOLEAN DEFAULT 0,
+  PRIMARY KEY (item_name, version_id, stat_key)
 );
 
--- Indexes to speed lookups by stat_key and by source_table
-CREATE INDEX IF NOT EXISTS idx_mod_parsed_stat_key
-  ON mod_parsed(stat_key);
+-- Optional indexes to speed common lookups
+CREATE INDEX IF NOT EXISTS idx_mod_parsed_item
+  ON mod_parsed(item_name);
 
-CREATE INDEX IF NOT EXISTS idx_mod_parsed_source_table
-  ON mod_parsed(source_table);
+CREATE INDEX IF NOT EXISTS idx_mod_parsed_version
+  ON mod_parsed(version_id);
 
 COMMIT;
