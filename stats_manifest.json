@@ -1,0 +1,48 @@
+{
+  "files": [
+    {
+      "path": "src/Data/StatDescriptions/stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/passive_skill_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/passive_skill_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/passive_skill_aura_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/passive_skill_aura_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/active_skill_gem_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/active_skill_gem_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/gem_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/gem_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/advanced_mod_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/advanced_mod_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/meta_gem_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/meta_gem_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/monster_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/monster_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/skill_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/skill_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/utility_flask_buff_stat_descriptions.lua",
+      "url":  "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/utility_flask_buff_stat_descriptions.lua"
+    },
+    {
+      "path": "src/Data/StatDescriptions/Specific_Skill_Stat_Descriptions/*.lua",
+      "urlTemplate": "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/dev/src/Data/StatDescriptions/Specific_Skill_Stat_Descriptions/{filename}"
+    }
+  ]
+}

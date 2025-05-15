@@ -59,9 +59,12 @@ jobs:
       - name: Load bosses into DB
         run: python scripts/load_bosses.py
 
-      # Stat Definitions ETL
-      - name: Load stat definitions
-        run: python scripts/load_stat_definitions.py
+      # Stat Definitions ETL (new)
+      - name: Fetch stat‑description snapshots
+        run: python scripts/fetch_stats.py
+
+      - name: Parse & load stat definitions
+        run: python scripts/parse_stats.py
 
       # Modifier Parsing
       - name: Parse all modifiers
