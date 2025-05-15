@@ -58,18 +58,19 @@ def fetch_tree(poe_version: str) -> Path:
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
     content = resp.text
+    raw_data = json.loads(content)
 
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     raw_file = RAW_DIR / f"{poe_version}_{folder}_{ts}.json"
     raw_file.write_text(content, encoding="utf-8")
 
-    # Write canonical tree.json for smoke tests
+    # Wrap under "passive_tree" for smoke tests
+    wrapper = {"passive_tree": raw_data}
     canonical = DATA_DIR / "tree.json"
-    canonical.write_text(content, encoding="utf-8")
+    canonical.write_text(json.dumps(wrapper), encoding="utf-8")
 
-    # Also keep a versioned copy
     versioned = DATA_DIR / f"tree{poe_version}.json"
-    versioned.write_text(content, encoding="utf-8")
+    versioned.write_text(json.dumps(wrapper), encoding="utf-8")
 
     print(raw_file)
     return raw_file
