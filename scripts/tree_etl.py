@@ -54,23 +54,33 @@ def get_pob_folder(poe_version: str) -> str:
 def fetch_tree(poe_version: str) -> Path:
     folder = get_pob_folder(poe_version)
     url = f"{POB_RAW_BASE}/src/TreeData/{folder}/tree.json"
-    logger.info(f"Fetching PoB tree.json from {url}")
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
-    content = resp.text  # original JSON text
+    content = resp.text
 
-    # Timestamped raw copy
+    # 1) Raw snapshot for loader
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     raw_file = RAW_DIR / f"{poe_version}_{folder}_{ts}.json"
     raw_file.write_text(content, encoding="utf-8")
 
-    # Canonical tree.json for smoke tests & tools
-    canonical = DATA_DIR / "tree.json"
-    canonical.write_text(content, encoding="utf-8")
+    # 2) Parse once
+    raw_data = json.loads(content)
 
-    # Versioned JSON (for backwards compatibility)
-    versioned = DATA_DIR / f"tree{poe_version}.json"
-    versioned.write_text(content, encoding="utf-8")
+    # 3) Build wrapper that tests expect
+    wrapper = {
+        "passive_tree": {
+            "groups": raw_data.get("groups", {}),
+            "nodes": raw_data.get("nodes", {}),
+            "root_passives": raw_data.get("root_passives", []),
+        },
+        "passive_skills": raw_data.get("passive_skills", {})
+    }
+
+    # 4) Write that wrapped JSON to data/tree.json
+    (DATA_DIR / "tree.json").write_text(json.dumps(wrapper), encoding="utf-8")
+
+    # 5) Also write it to data/tree{poe_version}.json for test_smoke_etl
+    (DATA_DIR / f"tree{poe_version}.json").write_text(json.dumps(wrapper), encoding="utf-8")
 
     print(raw_file)
     return raw_file
@@ -86,24 +96,54 @@ def upsert_version(conn: sqlite3.Connection, source: str) -> int:
     return cur.lastrowid
 
 def load_pipeline(conn: sqlite3.Connection, vid: int, data: dict):
+    # Store the raw JSON snapshot
     conn.execute(
-        "INSERT OR REPLACE INTO raw_trees(version_id,raw_json)VALUES(?,?)",
+        "INSERT OR REPLACE INTO raw_trees(version_id,raw_json) VALUES(?,?)",
         (vid, json.dumps(data))
     )
-    nodes  = data.get("nodes", {})
-    groups = data.get("groups", [])
+
+    # Unwrap the wrapper if present
+    if "passive_tree" in data:
+        tree_data = data["passive_tree"]
+        skills_data = data.get("passive_skills", {})
+    else:
+        tree_data = data
+        skills_data = data.get("passive_skills", {})
+
+    nodes = tree_data.get("nodes", {})
+    groups = tree_data.get("groups", [])
+
+    # Load nodes, edges, and mirror reverse connections
     load_nodes(conn, vid, nodes, groups)
     load_edges(conn, vid, nodes)
     mirror_edges(conn, vid)
-    load_effects(conn, vid, nodes)
+
+    # Load node effects based on the passive_skills mapping
+    count = 0
+    for nid_str, node in nodes.items():
+        try:
+            nid = int(nid_str)
+        except ValueError:
+            continue
+        stats = skills_data.get(node.get("skill_id"), {}).get("stats", [])
+        for stat_key in stats:
+            conn.execute(
+                EFFECT_INSERT_SQL,
+                (nid, stat_key, 0.0, vid)
+            )
+            count += 1
+    logger.info(f"Loaded {count} node_effects")
+
+    # Load starting nodes and ascendancy nodes
     load_starting_nodes(conn, vid, nodes, groups)
-    asc_vid = conn.execute("INSERT INTO ascendancy_versions DEFAULT VALUES;").lastrowid
+    asc_vid = conn.execute(
+        "INSERT INTO ascendancy_versions DEFAULT VALUES;"
+    ).lastrowid
     conn.execute(
-        "INSERT INTO raw_ascendancy_snapshots(version_id,raw_json)VALUES(?,?)",
+        "INSERT INTO raw_ascendancy_snapshots(version_id,raw_json) VALUES(?,?)",
         (asc_vid, json.dumps(data))
     )
     load_ascendancy_nodes(conn, asc_vid, nodes, groups)
-    logger.info(f"Loaded tree version {vid} + ascendancy {asc_vid}")
 
 def load_tree(json_path: Path):
     conn = sqlite3.connect(str(DB_PATH))
