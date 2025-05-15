@@ -39,7 +39,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Repo mapping
 POB_RAW_BASE = (
     "https://raw.githubusercontent.com/PathOfBuildingCommunity/"
     "PathOfBuilding-PoE2/dev"
@@ -59,10 +58,19 @@ def fetch_tree(poe_version: str) -> Path:
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
     content = resp.text
+
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     raw_file = RAW_DIR / f"{poe_version}_{folder}_{ts}.json"
     raw_file.write_text(content, encoding="utf-8")
-    (DATA_DIR / f"tree{poe_version}.json").write_text(content, encoding="utf-8")
+
+    # Write canonical tree.json for smoke tests
+    canonical = DATA_DIR / "tree.json"
+    canonical.write_text(content, encoding="utf-8")
+
+    # Also keep a versioned copy
+    versioned = DATA_DIR / f"tree{poe_version}.json"
+    versioned.write_text(content, encoding="utf-8")
+
     print(raw_file)
     return raw_file
 
