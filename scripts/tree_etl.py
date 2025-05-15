@@ -1,4 +1,3 @@
-# scripts/tree_etl.py
 #!/usr/bin/env python3
 """
 Unified JSON‑only ETL for PathOfBuilding‑PoE2 tree.json into MCP.
@@ -8,17 +7,22 @@ import requests
 import logging
 import sqlite3
 import json
+import sys
 from pathlib import Path
 from datetime import datetime
 
-from scripts.tree_loader import (
+# ── Ensure scripts/ is on import path ────────────────────────────────────────
+SCRIPT_DIR = Path(__file__).parent.resolve()
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from tree_loader import (
     load_nodes, load_edges, mirror_edges,
     load_effects, load_starting_nodes, load_ascendancy_nodes
 )
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-HERE         = Path(__file__).parent
-PROJECT_ROOT = HERE.parent
+PROJECT_ROOT = SCRIPT_DIR.parent
 DATA_DIR     = PROJECT_ROOT / "data"
 RAW_DIR      = DATA_DIR / "raw_trees"
 LOG_DIR      = PROJECT_ROOT / "logs" / "tree_etl"
@@ -48,7 +52,6 @@ def get_pob_folder(poe_version: str) -> str:
         raise ValueError(f"No PoB folder mapping for PoE version {poe_version}")
     return folder
 
-# Fetch & parse
 def fetch_tree(poe_version: str) -> Path:
     folder = get_pob_folder(poe_version)
     url = f"{POB_RAW_BASE}/src/TreeData/{folder}/tree.json"
@@ -66,7 +69,6 @@ def fetch_tree(poe_version: str) -> Path:
 def parse_json(json_path: Path) -> dict:
     return json.loads(json_path.read_text(encoding="utf-8"))
 
-# DB helpers
 def upsert_version(conn: sqlite3.Connection, source: str) -> int:
     cur = conn.execute(
         "INSERT INTO tree_versions(version_tag,fetched_at,source_url)VALUES(?,?,?)",
@@ -74,7 +76,6 @@ def upsert_version(conn: sqlite3.Connection, source: str) -> int:
     )
     return cur.lastrowid
 
-# ETL pipeline
 def load_pipeline(conn: sqlite3.Connection, vid: int, data: dict):
     conn.execute(
         "INSERT OR REPLACE INTO raw_trees(version_id,raw_json)VALUES(?,?)",
@@ -110,7 +111,6 @@ def load_tree(json_path: Path):
     finally:
         conn.close()
 
-# CLI
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="PoB JSON-only ETL for MCP")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -118,6 +118,10 @@ if __name__ == '__main__':
     pl = sub.add_parser("load");  pl.add_argument("--json-file", type=Path, required=True)
     pr = sub.add_parser("run");   pr.add_argument("--poe-version", default="401")
     args = parser.parse_args()
-    if args.cmd=="fetch": fetch_tree(args.poe_version)
-    elif args.cmd=="load":  load_tree(args.json_file)
-    else:                   jf=fetch_tree(args.poe_version); load_tree(jf)
+    if args.cmd == "fetch":
+        fetch_tree(args.poe_version)
+    elif args.cmd == "load":
+        load_tree(args.json_file)
+    else:
+        jf = fetch_tree(args.poe_version)
+        load_tree(jf)
