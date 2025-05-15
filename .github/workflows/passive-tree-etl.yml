@@ -33,17 +33,9 @@ jobs:
       - name: Seed boss‑skill overrides
         run: sqlite3 db/passive_tree.db ".read migrations/005_seed_skill_to_boss.sql"
 
-      # Passive Tree & Ascendancy ETL
-      - name: Fetch passive‑tree JSON
-        run: python scripts/FetchAndLoadTree401.py
-
-      - name: Register tree version
-        run: |
-          V=$(python scripts/register_tree_version.py --json-file data/tree401.json)
-          echo "VERSION=$V" >> $GITHUB_ENV
-
-      - name: Load passive tree & ascendancy into DB
-        run: python scripts/load_tree401.py --json-file data/tree401.json --version-id ${{ env.VERSION }}
+      # Passive Tree & Ascendancy ETL (consolidated)
+      - name: Fetch & load passive tree + ascendancy
+        run: python scripts/tree_etl.py run --poe-version 401
 
       # Item ETL
       - name: Fetch PoB item data
@@ -59,7 +51,7 @@ jobs:
       - name: Load bosses into DB
         run: python scripts/load_bosses.py
 
-      # Stat Definitions ETL (new)
+      # Stat Definitions ETL
       - name: Fetch stat‑description snapshots
         run: python scripts/fetch_stats.py
 

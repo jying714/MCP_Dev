@@ -27,3 +27,18 @@ def test_get_valid_stat():
 def test_get_invalid_stat():
     res = client.get("/stats/DoesNotExist")
     assert res.status_code == 404
+
+def test_stats_etl_and_api(client):
+    # this assumes you have a TestClient fixture named client
+    # 1) a known generic
+    r1 = client.get("/api/stats/base_skill_effect_duration")
+    assert r1.status_code == 200
+    j1 = r1.json()
+    assert j1["stat_key"] == "base_skill_effect_duration"
+    assert "unit" in j1 and "description" in j1
+
+    # 2) a known override
+    r2 = client.get("/api/stats/active_skill_attack_damage_+%_final?skill_key=active")
+    assert r2.status_code == 200
+    j2 = r2.json()
+    assert j2["override"] is True

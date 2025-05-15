@@ -38,7 +38,7 @@ def run_setup(db_path: str = str(DB_PATH)):
     # passive_nodes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS passive_nodes (
-      node_id      INTEGER PRIMARY KEY,
+      node_id      INTEGER,
       version_id   INTEGER NOT NULL REFERENCES tree_versions(version_id),
       x            INTEGER,
       y            INTEGER,
@@ -48,6 +48,7 @@ def run_setup(db_path: str = str(DB_PATH)):
       orbit        INTEGER,
       group_id     INTEGER,
       is_playable  BOOLEAN,
+      PRIMARY KEY(node_id, version_id),
       FOREIGN KEY(version_id) REFERENCES tree_versions(version_id)
     );
     """)
@@ -55,10 +56,41 @@ def run_setup(db_path: str = str(DB_PATH)):
     # node_edges
     cur.execute("""
     CREATE TABLE IF NOT EXISTS node_edges (
-      from_node_id INTEGER NOT NULL REFERENCES passive_nodes(node_id),
-      to_node_id   INTEGER NOT NULL REFERENCES passive_nodes(node_id),
+      from_node_id INTEGER NOT NULL,
+      to_node_id   INTEGER NOT NULL,
       version_id   INTEGER NOT NULL REFERENCES tree_versions(version_id),
-      PRIMARY KEY (from_node_id, to_node_id, version_id)
+      PRIMARY KEY (from_node_id, to_node_id, version_id),
+      FOREIGN KEY(from_node_id) REFERENCES passive_nodes(node_id),
+      FOREIGN KEY(to_node_id)   REFERENCES passive_nodes(node_id),
+      FOREIGN KEY(version_id)   REFERENCES tree_versions(version_id)
+    );
+    """)
+
+    # node_errors
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS node_errors (
+      version_id  INTEGER NOT NULL REFERENCES tree_versions(version_id),
+      node_id     INTEGER NOT NULL,
+      error_type  TEXT    NOT NULL,
+      raw_value   TEXT,
+      PRIMARY KEY (version_id, node_id, error_type, raw_value),
+      FOREIGN KEY(version_id) REFERENCES tree_versions(version_id),
+      FOREIGN KEY(node_id)    REFERENCES passive_nodes(node_id)
+    );
+    """)
+
+    # edge_errors
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS edge_errors (
+      version_id     INTEGER NOT NULL REFERENCES tree_versions(version_id),
+      from_node_id   INTEGER NOT NULL,
+      to_node_id     INTEGER NOT NULL,
+      error_type     TEXT    NOT NULL,
+      raw_radius     TEXT,
+      PRIMARY KEY (version_id, from_node_id, to_node_id, error_type, raw_radius),
+      FOREIGN KEY(version_id)   REFERENCES tree_versions(version_id),
+      FOREIGN KEY(from_node_id) REFERENCES passive_nodes(node_id),
+      FOREIGN KEY(to_node_id)   REFERENCES passive_nodes(node_id)
     );
     """)
 
@@ -70,7 +102,7 @@ def run_setup(db_path: str = str(DB_PATH)):
       value       REAL,
       version_id  INTEGER NOT NULL REFERENCES tree_versions(version_id),
       PRIMARY KEY (node_id, stat_key, version_id),
-      FOREIGN KEY(node_id) REFERENCES passive_nodes(node_id),
+      FOREIGN KEY(node_id)    REFERENCES passive_nodes(node_id),
       FOREIGN KEY(version_id) REFERENCES tree_versions(version_id)
     );
     """)
@@ -84,7 +116,7 @@ def run_setup(db_path: str = str(DB_PATH)):
       x           INTEGER,
       y           INTEGER,
       PRIMARY KEY (version_id, node_id, class),
-      FOREIGN KEY(node_id) REFERENCES passive_nodes(node_id),
+      FOREIGN KEY(node_id)    REFERENCES passive_nodes(node_id),
       FOREIGN KEY(version_id) REFERENCES tree_versions(version_id)
     );
     """)
@@ -243,7 +275,7 @@ def run_setup(db_path: str = str(DB_PATH)):
     """)
 
     # boss_skills
-    cur.execute("""
+    cur.execute(""" 
     CREATE TABLE IF NOT EXISTS boss_skills (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       boss_id     INTEGER NOT NULL REFERENCES bosses(id),
