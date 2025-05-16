@@ -1,5 +1,5 @@
 # tests/conftest.py
-import os
+
 import subprocess
 import pytest
 from pathlib import Path
@@ -39,5 +39,12 @@ def rebuild_db_and_run_etl():
         check=True
     )
 
-    # yield to allow the rest of tests to run against this fresh DB
+    # 5) Parse modifiers into mod_parsed
+    subprocess.run(
+        ["python", "scripts/parse_mods.py"],
+        cwd=str(PROJECT_ROOT),
+        check=True
+    )
+
+    # Now all ETL steps have run; tests will use this fresh database
     yield
