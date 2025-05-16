@@ -39,7 +39,7 @@ def rebuild_db_and_run_etl():
         check=True
     )
 
-    # 5) Parse modifiers into mod_parsed
+    # 5) Parse all modifiers
     subprocess.run(
         ["python", "scripts/parse_mods.py"],
         cwd=str(PROJECT_ROOT),
