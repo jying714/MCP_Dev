@@ -1,4 +1,3 @@
-# scripts/fetch_stats.py
 #!/usr/bin/env python3
 """
 Fetch all stat‑description Lua files listed in stats_manifest.json
@@ -7,6 +6,7 @@ and snapshot them to data/raw_stats with a timestamp.
 import json
 import requests
 import logging
+import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -38,16 +38,21 @@ timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 def list_specific_files():
     api_url = (
         "https://api.github.com/repos/"
-        "PathOfBuildingCommunity/PathOfBuilding-PoE2/contents/src/Data/StatDescriptions/Specific_Skill_Stat_Descriptions?ref=dev"
+        "PathOfBuildingCommunity/PathOfBuilding-PoE2/contents/"
+        "src/Data/StatDescriptions/Specific_Skill_Stat_Descriptions?ref=dev"
     )
     resp = requests.get(api_url, timeout=30)
     resp.raise_for_status()
     entries = resp.json()
-    return [e["name"] for e in entries if e["type"] == "file" and e["name"].endswith(".lua")]
+    return [
+        e["name"]
+        for e in entries
+        if e.get("type") == "file" and e.get("name", "").endswith(".lua")
+    ]
 
 # ── Fetch Loop ───────────────────────────────────────────────────────────────
-for entry in manifest["files"]:
-    path = entry.get("path")
+for entry in manifest.get("files", []):
+    path = entry.get("path", "")
     if "*" in path:
         # Wildcard → fetch each specific‑skill file
         tmpl = entry["urlTemplate"]
@@ -59,12 +64,14 @@ for entry in manifest["files"]:
             dest.write_text(resp.text, encoding="utf-8")
             logger.info(f"Fetched {fname} → {dest}")
     else:
-        url = entry["url"]
+        # Single file entry
+        url = entry.get("url")
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
+        # flatten path to filename
         fname = path.replace("/", "_")
         dest = RAW_DIR / f"{fname}_{timestamp}.lua"
         dest.write_text(resp.text, encoding="utf-8")
         logger.info(f"Fetched {path} → {dest}")
 
-print("✅ All stat files fetched and snapshot to data/raw_stats/")
+print("All stat files fetched and snapshot to data/raw_stats/")

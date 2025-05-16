@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 from datetime import datetime
+from tree_loader import EFFECT_INSERT_SQL
+
 
 # ── Ensure scripts/ is on import path ────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -152,7 +154,7 @@ def load_tree(json_path: Path):
         data = parse_json(json_path)
         load_pipeline(conn, vid, data)
         conn.commit()
-        print(f"✅ Loaded tree version {vid}")
+        print(f"Loaded tree version {vid}")
     except Exception:
         conn.rollback()
         logger.exception("Load failed")

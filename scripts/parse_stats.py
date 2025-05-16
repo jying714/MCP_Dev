@@ -143,7 +143,7 @@ def main():
                 logger.info(f"Loaded overrides from {name}")
 
         conn.commit()
-        print("✅ Parsed and loaded all stat descriptions (generic + overrides).")
+        print("Parsed and loaded all stat descriptions (generic + overrides).")
     except Exception:
         conn.rollback()
         logger.exception("parse_stats.py failed")
