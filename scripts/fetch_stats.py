@@ -7,8 +7,10 @@ import json
 import requests
 import logging
 import sys
+import time
 from pathlib import Path
 from datetime import datetime
+from requests.exceptions import HTTPError
 
 # ── Paths & Setup ────────────────────────────────────────────────────────────
 HERE         = Path(__file__).parent
@@ -34,6 +36,20 @@ with MANIFEST.open(encoding="utf-8") as f:
 # Timestamp for snapshot files
 timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
+# ── Resilient GET with exponential backoff ───────────────────────────────────
+def safe_get(url, **kwargs):
+    max_attempts = 5
+    for attempt in range(1, max_attempts + 1):
+        resp = requests.get(url, **kwargs)
+        if resp.status_code == 429:
+            wait = 2 ** attempt
+            logger.warning(f"Rate limited fetching {url}, retrying in {wait}s (attempt {attempt}/{max_attempts})")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp
+    raise HTTPError(f"Rate limited: failed to fetch {url} after {max_attempts} attempts")
+
 # ── Helper: list all specific skill files via GitHub API ──────────────────────
 def list_specific_files():
     api_url = (
@@ -41,8 +57,7 @@ def list_specific_files():
         "PathOfBuildingCommunity/PathOfBuilding-PoE2/contents/"
         "src/Data/StatDescriptions/Specific_Skill_Stat_Descriptions?ref=dev"
     )
-    resp = requests.get(api_url, timeout=30)
-    resp.raise_for_status()
+    resp = safe_get(api_url, timeout=30)
     entries = resp.json()
     return [
         e["name"]
@@ -54,21 +69,16 @@ def list_specific_files():
 for entry in manifest.get("files", []):
     path = entry.get("path", "")
     if "*" in path:
-        # Wildcard → fetch each specific‑skill file
         tmpl = entry["urlTemplate"]
         for fname in list_specific_files():
             url = tmpl.replace("{filename}", fname)
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
+            resp = safe_get(url, timeout=30)
             dest = RAW_DIR / f"{fname}_{timestamp}.lua"
             dest.write_text(resp.text, encoding="utf-8")
             logger.info(f"Fetched {fname} → {dest}")
     else:
-        # Single file entry
         url = entry.get("url")
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        # flatten path to filename
+        resp = safe_get(url, timeout=30)
         fname = path.replace("/", "_")
         dest = RAW_DIR / f"{fname}_{timestamp}.lua"
         dest.write_text(resp.text, encoding="utf-8")
